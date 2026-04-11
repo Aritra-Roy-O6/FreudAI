@@ -10,7 +10,8 @@ from memory_manager import (
     store_in_long_term_memory,
     get_short_term_context,
     load_entities,
-    memory_collection
+    memory_collection,
+    wipe_all_memory
 )
 from rag_engine import HybridRAGEngine
 
@@ -44,7 +45,7 @@ async def chat_endpoint(payload: UserMessagePayload):
     # 2. MEMORY & CONTEXT RETRIEVAL
     # ==========================================
     # A. Get Short-Term Context (Last 8 turns)
-    short_term_context = "\n".join(get_short_term_context(chat_history, window_size=8))
+    short_term_context = "\n".join(get_short_term_context(chat_history, window_size=4))
 
     # B. Get Known Entities
     user_entities = load_entities()
@@ -60,7 +61,7 @@ async def chat_endpoint(payload: UserMessagePayload):
     if all_memories:
         engine = HybridRAGEngine()
         engine.fit_corpus(all_memories)
-        retrieved_memories = engine.retrieve(user_text, top_k=2)
+        retrieved_memories = engine.retrieve(user_text, top_k=1)
 
     # ==========================================
     # 3. REASONING CORE (LLM GENERATION)
@@ -82,7 +83,9 @@ async def chat_endpoint(payload: UserMessagePayload):
     chat_history.append(f"AI: {bot_reply}")
 
     # B. Save the interaction to ChromaDB for long-term memory
-    store_in_long_term_memory(user_text, bot_reply, emotion_tag, payload.session_id)
+   # Only save to vector database if the user typed a meaningful sentence (> 4 words)
+    if len(user_text.split()) > 4:
+        store_in_long_term_memory(user_text, bot_reply, emotion_tag, payload.session_id)
 
     # (Note: In a post-MVP production build, an LLM call here would extract new entities to update user_entities)
 
@@ -90,6 +93,19 @@ async def chat_endpoint(payload: UserMessagePayload):
         "emotion_tag": emotion_tag,
         "response": bot_reply
     }
+
+# ==========================================
+@app.post("/reset")
+async def reset_endpoint():
+    """Wipes all short-term and long-term memory for a fresh start."""
+    global chat_history
+    # Clear the API's short-term list
+    chat_history.clear()
+    
+    # Trigger the deep wipe
+    wipe_all_memory()
+    
+    return {"status": "Memory fully wiped. Ready for a new session."}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

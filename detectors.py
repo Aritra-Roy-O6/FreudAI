@@ -1,10 +1,55 @@
-import re
+import numpy as np
 from textblob import TextBlob
 from sentence_transformers import SentenceTransformer
-import numpy as np
 
-# Load a lightweight embedding model for the sarcasm contrast check
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+# Load the shared lightweight embedding model
+embedder = SentenceTransformer('all-MiniLM-L6-v2')
+
+# ==========================================
+# SEMANTIC CONCEPT ANCHORS
+# ==========================================
+
+# 1. Deflection / Masking Anchors
+DEFLECTION_ANCHORS = [
+    "It's whatever, I don't really care.",
+    "I'm perfectly fine, everything is great.",
+    "It doesn't matter anyway.",
+    "I'm just laughing it off, it's fine."
+]
+
+# 2. Avoidance / Anhedonia Anchors
+AVOIDANCE_ANCHORS = [
+    "I just lie in bed all day and do nothing.",
+    "I stopped doing the things I used to love.",
+    "I can't be bothered to try anymore.",
+    "I don't see the point in putting in effort."
+]
+
+# 3. Imposter Syndrome / Social Comparison Anchors
+COMPARISON_ANCHORS = [
+    "Everyone else seems to have their life figured out.",
+    "I feel like I don't belong here compared to them.",
+    "They are so much better than me at everything.",
+    "I'm falling behind and everyone else is succeeding."
+]
+
+# Pre-compute embeddings for speed
+deflection_embeddings = embedder.encode(DEFLECTION_ANCHORS)
+avoidance_embeddings = embedder.encode(AVOIDANCE_ANCHORS)
+comparison_embeddings = embedder.encode(COMPARISON_ANCHORS)
+
+def cosine_similarity(vec1, vec2):
+    """Calculates mathematical distance between two meaning vectors."""
+    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+
+def get_max_similarity(text_embedding, anchor_embeddings):
+    """Returns the highest similarity score against a list of anchors."""
+    similarities = [cosine_similarity(text_embedding, anchor) for anchor in anchor_embeddings]
+    return max(similarities)
+
+# ==========================================
+# THE DETECTORS
+# ==========================================
 
 def lexical_scan(text: str) -> float:
     """Returns basic sentiment polarity from -1.0 (negative) to 1.0 (positive)."""
@@ -13,31 +58,33 @@ def lexical_scan(text: str) -> float:
 
 def sarcasm_probe(text: str, lexical_score: float) -> tuple[bool, float]:
     """
-    Detects sarcasm by checking for positive surface language paired with deflection triggers.
+    Detects sarcasm by checking if the user is semantically deflecting, 
+    but the basic text analyzer thinks they are being positive.
     """
-    deflection_triggers = [r"it's fine", r"whatever", r"i'm great", r"doesn't matter"]
+    text_embedding = embedder.encode([text.lower()])[0]
     
-    # Check for exact trigger phrases
-    has_trigger = any(re.search(pattern, text.lower()) for pattern in deflection_triggers)
+    # Check if the text means "I am deflecting/masking"
+    deflection_score = get_max_similarity(text_embedding, deflection_embeddings)
     
-    # Basic Contrastive Logic for Phase 1
-    # If they use a deflection phrase but surface sentiment is neutral/positive, flag it.
-    is_sarcastic = has_trigger and (lexical_score >= 0.0)
-    
-    confidence = 0.8 if is_sarcastic else 0.0
-    return is_sarcastic, confidence
+    is_sarcastic = False
+    # If they are semantically deflecting (> 0.55) AND using neutral/positive words
+    if deflection_score > 0.55 and lexical_score >= 0.0:
+        is_sarcastic = True
+        
+    return is_sarcastic, deflection_score
 
 def implicit_distress_flag(text: str) -> tuple[bool, float]:
     """
-    Flags behavioral patterns like skipping obligations or minimizing pain.
+    Flags behavioral patterns (avoidance or imposter syndrome) using semantic math.
     """
-    # Patterns indicating avoidance, past-tense joy, or minimization
-    implicit_patterns = [
-        r"used to love", r"stopped going", r"skip", r"stay in bed", 
-        r"what's the point", r"too much effort", r"just going numb"
-    ]
+    text_embedding = embedder.encode([text.lower()])[0]
     
-    has_implicit_cue = any(re.search(pattern, text.lower()) for pattern in implicit_patterns)
+    avoidance_score = get_max_similarity(text_embedding, avoidance_embeddings)
+    comparison_score = get_max_similarity(text_embedding, comparison_embeddings)
     
-    confidence = 0.85 if has_implicit_cue else 0.0
-    return has_implicit_cue, confidence
+    # If either concept hits the threshold
+    max_implicit_score = max(avoidance_score, comparison_score)
+    
+    has_implicit_cue = max_implicit_score > 0.55
+    
+    return has_implicit_cue, max_implicit_score

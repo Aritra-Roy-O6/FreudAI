@@ -145,3 +145,19 @@ if __name__ == "__main__":
             print(f" -> {mem}")
     else:
         print("❌ Retrieval failed.")
+
+# ==========================================
+# STEP 5: MEMORY WIPE (NEW CHAT)
+# ==========================================
+def wipe_all_memory():
+    """Completely erases the JSON entity ledger and all ChromaDB vectors."""
+    # 1. Erase the Entity Ledger
+    if os.path.exists(ENTITY_FILE):
+        os.remove(ENTITY_FILE)
+        
+    # 2. Erase the Vector Database
+    all_docs = memory_collection.get()
+    if all_docs and all_docs.get('ids'):
+        memory_collection.delete(ids=all_docs['ids'])
+        
+    print("Success: Total memory wipe completed.")

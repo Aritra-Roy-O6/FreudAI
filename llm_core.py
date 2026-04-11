@@ -7,10 +7,10 @@ from langchain_core.messages import SystemMessage, HumanMessage
 # 1. Load API Key
 load_dotenv()
 
-# 2. Initialize the Gemini Engine (Removed max_tokens to prevent artificial choking)
+# 2. Initialize the Gemini Engine
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
-    temperature=0.4, 
+    temperature=0.5, # Increased slightly to prevent repetitive phrasing
     safety_settings={
         HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -29,8 +29,8 @@ def generate_response(
     
     # LAYER 1: PERSONA ANCHOR
     layer_1_persona = """
-    You are an empathetic, highly perceptive, non-clinical listener. 
-    Your tone must be warm, specific, and inquisitive. You do not fix problems; you untangle them.
+    You are an empathetic, highly perceptive, non-clinical listener named FreudAI. 
+    Your tone must be warm, conversational, and inquisitive. You do not fix problems; you untangle them.
     """
     
     # LAYER 2: USER PROFILE INJECTION
@@ -38,7 +38,7 @@ def generate_response(
     layer_2_entities = f"""
     KNOWN USER ENTITIES & RELATIONSHIPS:
     {entities_str}
-    (Use these names and facts naturally. Do not ask for details you already know.)
+    (Use these details seamlessly. Do not ask for information you already have.)
     """
     
     # LAYER 3: RETRIEVED CONTEXT (RAG)
@@ -50,12 +50,12 @@ def generate_response(
     
     # LAYER 4: EMOTIONAL STATE FRAME & ROUTING INSTRUCTIONS
     sub_prompts = {
-        "[EXPLICIT_DISTRESS]": "Deep validation required. Ask an open question about the core of the pain.",
-        "[IMPLICIT_DISTRESS]": "The user is masking their pain. Gently name the subtext without projecting, and probe the avoidance.",
-        "[SARCASM_DEFLECTION]": "Name the deflection. Do not mirror false positivity. Contrast what they say with how they likely feel.",
-        "[COGNITIVE_OVERLOAD]": "The user is tangled in multiple stressors. Help them untangle by prioritizing one specific thread.",
-        "[EMOTIONAL_NUMBING]": "Acknowledge the flatness. Invite them to explore the numbness without pushing them to 'feel' immediately.",
-        "[CRISIS_SIGNAL_ESCALATE]": "CRITICAL: Acknowledge their severe pain directly, validate their worth, and gently suggest professional support.",
+        "[EXPLICIT_DISTRESS]": "Validate the pain deeply. Ask an open question about its core.",
+        "[IMPLICIT_DISTRESS]": "The user is masking pain or comparing themselves. Gently name the subtext without projecting.",
+        "[SARCASM_DEFLECTION]": "The user is using sarcasm or irony. Acknowledge the contrast between their positive words and the negative reality.",
+        "[COGNITIVE_OVERLOAD]": "The user is overwhelmed by multiple stressors. Help them untangle by isolating one specific thread.",
+        "[EMOTIONAL_NUMBING]": "Acknowledge the flatness. Invite them to explore the numbness without forcing them to 'feel'.",
+        "[CRISIS_SIGNAL_ESCALATE]": "CRITICAL: Validate their worth directly, acknowledge severe pain, and gently suggest professional support.",
         "[NEUTRAL_CONVERSATIONAL]": "Maintain a warm, casual, but attentive conversational flow."
     }
     routing_instruction = sub_prompts.get(emotion_tag, sub_prompts["[NEUTRAL_CONVERSATIONAL]"])
@@ -65,15 +65,15 @@ def generate_response(
     ROUTING INSTRUCTION: {routing_instruction}
     """
     
-    # LAYER 5: ANTI-GENERIC CONSTRAINT
+    # LAYER 5: ANTI-GENERIC CONSTRAINT (The Parrot Cure)
     layer_5_constraint = """
     HARD CONSTRAINT:
-    - ZERO generic fallbacks. 
-    - DO NOT use platitudes like "I'm sorry you're going through this" or "That sounds hard."
-    - Every sentence must directly reference a specific word, entity, or concept the user just provided.
+    - ZERO generic fallbacks or platitudes (Never say "I'm sorry you're going through this" or "That sounds hard").
+    - Ground your response in the specific reality the user just shared. 
+    - CRITICAL: DO NOT parrot or echo the user's exact quotes back to them. Paraphrase their underlying concepts naturally, like a real human friend would. 
+    - AVOID starting sentences with "You mentioned..." or "It sounds like..."
     """
     
-    # ASSEMBLE THE MASTER PROMPT
     master_system_prompt = f"{layer_1_persona}\n{layer_2_entities}\n{layer_3_rag}\n{layer_4_emotion}\n{layer_5_constraint}"
     
     context_prefix = f"Recent Conversation Context:\n{short_term_history}\n\n" if short_term_history else ""
@@ -86,12 +86,9 @@ def generate_response(
     
     try:
         response = llm.invoke(messages)
-        
-        # --- NEW DIAGNOSTIC PRINT ---
         print("\n--- GENERATION SUCCESS ---")
         print(f"Finish Reason: {response.response_metadata.get('finish_reason', 'UNKNOWN')}")
         print("--------------------------\n")
-        
         return response.content
     except Exception as e:
         print(f"\n--- LLM GENERATION ERROR ---\n{e}\n----------------------------\n")

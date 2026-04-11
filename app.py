@@ -9,6 +9,19 @@ st.set_page_config(page_title="Fourth Order | Track B", page_icon="🧠", layout
 st.title("FreudAI: Your AI-Powered Emotional Support Companion")
 st.subheader("AI-Powered Mental Health & Emotional Support")
 
+# --- Reset Button ---
+st.subheader("System Logs")
+col1, col2 = st.columns([6, 1])
+with col2:
+    if st.button("🔄 Reset", help="Reset Neural Memory"):
+        try:
+            requests.post("http://localhost:8000/reset")
+            st.success("Neural link severed. Memory erased.")
+        except Exception as e:
+            st.error("Failed to reach backend to clear memory.")
+        st.session_state.messages = []
+        st.rerun()
+
 # Initialize chat history in session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -17,18 +30,15 @@ if "messages" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-        # Optionally show the debug tag for the AI's responses
         if message["role"] == "assistant" and "tag" in message:
             st.caption(f"*Routed as: {message['tag']}*")
 
 # Handle user input
 if prompt := st.chat_input("What's on your mind?"):
-    # Append and display user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Call the FastAPI backend
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         
@@ -43,7 +53,6 @@ if prompt := st.chat_input("What's on your mind?"):
             message_placeholder.markdown(bot_reply)
             st.caption(f"*Routed as: {emotion_tag}*")
             
-            # Save to history
             st.session_state.messages.append({
                 "role": "assistant", 
                 "content": bot_reply,
