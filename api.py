@@ -7,7 +7,7 @@ from rag_engine import HybridRAGEngine
 import json
 
 # Import our custom modules from Phases 1-4
-from detectors import lexical_scan, sarcasm_probe, implicit_distress_flag
+from detectors import lexical_scan, sarcasm_probe, implicit_distress_flag, crisis_flag_semantic
 from router import priority_router
 from llm_core import generate_response
 from memory_manager import (
@@ -52,7 +52,8 @@ async def chat_endpoint(payload: UserMessagePayload):
     lex_score = lexical_scan(user_text)
     is_sarcastic, _ = sarcasm_probe(user_text, lex_score)
     is_implicit, _ = implicit_distress_flag(user_text)
-    emotion_tag = priority_router(user_text, lex_score, is_sarcastic, is_implicit)
+    is_crisis_semantic, _ = crisis_flag_semantic(user_text)
+    emotion_tag = priority_router(user_text, lex_score, is_sarcastic, is_implicit, is_crisis_semantic)
 
     # 2. RETRIEVE KNOWLEDGE & CONTEXT
     user_entities = load_entities() # Load existing JSON data

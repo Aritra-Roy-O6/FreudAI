@@ -20,7 +20,7 @@ except Exception as e:
     _classifier = None
 
 # ==========================================
-# 2. EMOTION LABELS  (plain English — edit freely)
+# 3. EMOTION LABELS  (plain English — edit freely)
 # ==========================================
 # These are NOT anchor sentences. They are hypothesis *descriptions* fed
 # directly to the NLI model.  The model figures out on its own whether the
@@ -43,8 +43,11 @@ EMOTION_LABELS: dict[str, str] = {
         "simultaneously and they cannot cope.",
 
     "[CRISIS_SIGNAL_ESCALATE]":
-        "The person is expressing thoughts of self-harm, hopelessness, or a "
-        "sense that life is not worth living.",
+        "The person is expressing suicidal ideation, an active desire to die, "
+        "intent to commit self-harm, or a concrete plan to end their own life. "
+        "They may mention methods of self-harm, say they want to kill themselves, "
+        "or express that they see no reason to continue living. This is an "
+        "immediate life-threatening emergency.",
 
     "[EMOTIONAL_NUMBING]":
         "The person feels flat, empty, detached, or unable to feel any emotion "
@@ -65,24 +68,33 @@ _LABEL_KEYS   = list(EMOTION_LABELS.keys())
 _LABEL_TEXTS  = [EMOTION_LABELS[k] for k in _LABEL_KEYS]
 
 # ==========================================
-# 3. THE ROUTING ENGINE
+# 4. THE ROUTING ENGINE
 # ==========================================
-def priority_router(user_text: str, lex_score: float, is_sarcastic: bool, is_implicit: bool) -> str:
+def priority_router(user_text: str, lex_score: float, is_sarcastic: bool, is_implicit: bool, is_crisis_semantic: bool = False) -> str:
     """
-    Determines the primary emotional state using a Zero-Shot NLI model.
-    Hard-coded overrides are only kept for edge cases the detectors catch
-    with higher certainty than the language model (e.g. confirmed sarcasm).
+    Hybrid routing: Semantic Anchor Safety Layer → NLI Semantic Math → Fallback.
+
+    Order of evaluation (CRITICAL — do NOT rearrange):
+      1. CRISIS semantic override — bypasses NLI math if crisis is high confidence
+      2. Sarcasm override         — lexical detector confirmed deflection
+      3. NLI Classification       — the general-case semantic math
+      4. Low-confidence fallback  — implicit only if nothing else fired
     """
 
-    # 1. Hard Override — confirmed sarcasm from the lexical detector
+    # ── 1. RED LINE: Semantic Crisis Anchors ──────────────────────
+    if is_crisis_semantic:
+        print(f"Router → [CRISIS_SIGNAL_ESCALATE]  (SEMANTIC CRISIS DETECTED)")
+        return "[CRISIS_SIGNAL_ESCALATE]"
+
+    # ── 2. Sarcasm Override ────────────────────────────────────────────
     if is_sarcastic:
         return "[SARCASM_DEFLECTION]"
 
-    # 2. Graceful degradation if the model failed to load
+    # ── 3. Graceful degradation if the NLI model failed to load ───────
     if _classifier is None:
         return "[IMPLICIT_DISTRESS]" if is_implicit else "[NEUTRAL_CONVERSATIONAL]"
 
-    # 3. Zero-Shot Classification (The Math)
+    # ── 4. Zero-Shot NLI Classification (The Math) ────────────────────
     # The model scores P(entailment | user_text, hypothesis) for every label.
     result = _classifier(
         user_text,
@@ -98,10 +110,14 @@ def priority_router(user_text: str, lex_score: float, is_sarcastic: bool, is_imp
 
     print(f"Router → {best_emotion}  (confidence: {winning_score:.3f})")
 
-    # 4. Low-confidence fallback
-    # If even the top label barely beats random (< 0.30 after softmax over 7 classes),
-    # trust the lexical implicit-distress flag as a safety net.
+    # ── 5. Low-confidence fallback ────────────────────────────────────
+    # If even the top label barely beats random (< 0.30 after softmax
+    # over 7 classes), trust the lexical implicit-distress flag as a
+    # safety net — but ONLY if the best emotion isn't already crisis or
+    # explicit distress (never downgrade a severe signal).
     if winning_score < 0.30:
+        if best_emotion in ("[CRISIS_SIGNAL_ESCALATE]", "[EXPLICIT_DISTRESS]"):
+            return best_emotion          # never downgrade severity
         if is_implicit:
             return "[IMPLICIT_DISTRESS]"
         return "[NEUTRAL_CONVERSATIONAL]"

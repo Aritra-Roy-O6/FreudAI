@@ -33,10 +33,25 @@ COMPARISON_ANCHORS = [
     "I'm falling behind and everyone else is succeeding."
 ]
 
+# 4. Crisis / Severe Distress Anchors
+CRISIS_ANCHORS = [
+    "I want to kill myself.",
+    "I'm going to kill my self.",
+    "I wanna kill myself.",
+    "kms",
+    "I want to end my own life.",
+    "I cannot go on living like this and want to die.",
+    "planning to commit suicide.",
+    "I'm going to hurt myself.",
+    "I have no reason to live anymore.",
+    "nobody would care if I was dead."
+]
+
 # Pre-compute embeddings for speed
 deflection_embeddings = embedder.encode(DEFLECTION_ANCHORS)
 avoidance_embeddings = embedder.encode(AVOIDANCE_ANCHORS)
 comparison_embeddings = embedder.encode(COMPARISON_ANCHORS)
+crisis_embeddings = embedder.encode(CRISIS_ANCHORS)
 
 def cosine_similarity(vec1, vec2):
     """Calculates mathematical distance between two meaning vectors."""
@@ -88,3 +103,15 @@ def implicit_distress_flag(text: str) -> tuple[bool, float]:
     has_implicit_cue = max_implicit_score > 0.55
     
     return has_implicit_cue, max_implicit_score
+
+def crisis_flag_semantic(text: str) -> tuple[bool, float]:
+    """
+    Flags extreme crisis/suicidal intent using semantic similarity to known crisis anchors.
+    This avoids brittle hardcoded exact-match keyword matching.
+    """
+    text_embedding = embedder.encode([text.lower()])[0]
+    crisis_score = get_max_similarity(text_embedding, crisis_embeddings)
+    
+    # We use a strict threshold since crisis is an escalation
+    is_crisis = crisis_score > 0.55
+    return is_crisis, crisis_score
