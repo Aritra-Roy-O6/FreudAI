@@ -39,11 +39,11 @@ print(f"Success: Entity tracking will be saved to {ENTITY_FILE}")
 def load_entities() -> dict:
     """Loads the entity ledger from disk, or initializes a new one if it doesn't exist."""
     if not os.path.exists(ENTITY_FILE):
-        # Initialize the blank memory schema
+        # Initialize the blank memory schema — MUST be lists, not dicts
         return {
-            "people": {},     
-            "incidents": {},  
-            "preferences": {} 
+            "people": [],
+            "incidents": [],
+            "preferences": []
         }
     with open(ENTITY_FILE, "r") as f:
         return json.load(f)

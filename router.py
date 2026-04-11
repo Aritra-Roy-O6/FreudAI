@@ -1,77 +1,109 @@
-import numpy as np
-from sentence_transformers import SentenceTransformer
-import re
-
-# Load the same lightweight embedding model used in our RAG engine
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
+from transformers import pipeline
 
 # ==========================================
-# CONCEPT ANCHORS (Semantic Definitions)
+# 1. INITIALIZE ZERO-SHOT NLI CLASSIFIER
 # ==========================================
-CRISIS_ANCHORS = [
-    "I want to end my life",
-    "I can't take this pain anymore and want to die",
-    "I'm thinking about hurting myself",
-    "There is no point in living anymore"
-]
-
-OVERLOAD_ANCHORS = [
-    "I am completely drowning in responsibilities",
-    "Everything is happening at once and it's too much",
-    "Between work, school, and family, I am breaking down",
-    "I have way too much on my plate right now"
-]
-
-NUMBING_ANCHORS = [
-    "I just feel completely numb",
-    "I don't care about anything anymore, I feel empty",
-    "Everything is just blank and flat"
-]
-
-# Pre-compute anchor embeddings to save time on every turn
-crisis_embeddings = embedder.encode(CRISIS_ANCHORS)
-overload_embeddings = embedder.encode(OVERLOAD_ANCHORS)
-numbing_embeddings = embedder.encode(NUMBING_ANCHORS)
-
-def cosine_similarity(vec1, vec2):
-    """Calculates the mathematical distance between two meaning vectors."""
-    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
-
-def get_max_similarity(text_embedding, anchor_embeddings):
-    """Compares the user's text against all anchors and returns the highest match."""
-    similarities = [cosine_similarity(text_embedding, anchor) for anchor in anchor_embeddings]
-    return max(similarities)
+# cross-encoder/nli-deberta-v3-small is ~180 MB, CPU-friendly, and far more
+# generalizable than cosine-similarity over fixed anchor sentences.
+# It treats each LABEL_HYPOTHESIS as a natural-language premise and scores
+# whether the user's message "entails" it — no hardcoded examples needed.
+try:
+    print("Loading Zero-Shot Semantic Router (cross-encoder/nli-deberta-v3-small)...")
+    _classifier = pipeline(
+        "zero-shot-classification",
+        model="cross-encoder/nli-deberta-v3-small",
+        device=-1  # CPU; change to 0 if you have a CUDA GPU
+    )
+    print("Semantic Router Online.")
+except Exception as e:
+    print(f"Error loading ZS model: {e}")
+    _classifier = None
 
 # ==========================================
-# THE MASTER ROUTER
+# 2. EMOTION LABELS  (plain English — edit freely)
 # ==========================================
-def priority_router(text: str, lexical_score: float, is_sarcastic: bool, is_implicit: bool) -> str:
-    text_lower = text.lower()
-    text_embedding = embedder.encode([text_lower])[0]
+# These are NOT anchor sentences. They are hypothesis *descriptions* fed
+# directly to the NLI model.  The model figures out on its own whether the
+# user's text entails each one.  Add, rename, or rewrite any entry and the
+# router automatically adapts — no retraining required.
+EMOTION_LABELS: dict[str, str] = {
+    "[EXPLICIT_DISTRESS]":
+        "The person is expressing explicit emotional pain, grief, severe anxiety, "
+        "intense sadness, feeling worthless, or distress caused by family conflict, "
+        "arguments, or a toxic home environment.",
 
-    # 1. SEMANTIC CRISIS SIGNAL (Strict Threshold: 0.70)
-    if get_max_similarity(text_embedding, crisis_embeddings) > 0.70:
-        return "[CRISIS_SIGNAL_ESCALATE]"
-        
-    # 2. SARCASM / DEFLECTION
+    "[IMPLICIT_DISTRESS]":
+        "The person is masking or minimizing their pain, comparing themselves "
+        "unfavorably to others, feeling disconnected, numb, or subtly uneasy "
+        "without openly admitting they are struggling.",
+
+    "[COGNITIVE_OVERLOAD]":
+        "The person is overwhelmed because multiple serious stressors — such as "
+        "exams, work, family problems, or responsibilities — are hitting them "
+        "simultaneously and they cannot cope.",
+
+    "[CRISIS_SIGNAL_ESCALATE]":
+        "The person is expressing thoughts of self-harm, hopelessness, or a "
+        "sense that life is not worth living.",
+
+    "[EMOTIONAL_NUMBING]":
+        "The person feels flat, empty, detached, or unable to feel any emotion "
+        "at all, even when they objectively should.",
+
+    "[SARCASM_DEFLECTION]":
+        "The person is using sarcasm, dark humour, or irony to deflect from "
+        "an underlying negative emotional state.",
+
+    "[NEUTRAL_CONVERSATIONAL]":
+        "The person is having a normal, calm conversation — sharing updates, "
+        "asking general questions, or chatting without any significant "
+        "emotional weight.",
+}
+
+# Pre-extract the ordered label list once so we don't rebuild it every call
+_LABEL_KEYS   = list(EMOTION_LABELS.keys())
+_LABEL_TEXTS  = [EMOTION_LABELS[k] for k in _LABEL_KEYS]
+
+# ==========================================
+# 3. THE ROUTING ENGINE
+# ==========================================
+def priority_router(user_text: str, lex_score: float, is_sarcastic: bool, is_implicit: bool) -> str:
+    """
+    Determines the primary emotional state using a Zero-Shot NLI model.
+    Hard-coded overrides are only kept for edge cases the detectors catch
+    with higher certainty than the language model (e.g. confirmed sarcasm).
+    """
+
+    # 1. Hard Override — confirmed sarcasm from the lexical detector
     if is_sarcastic:
         return "[SARCASM_DEFLECTION]"
-        
-    # 3. IMPLICIT DISTRESS
-    if is_implicit:
-        return "[IMPLICIT_DISTRESS]"
-        
-    # 4. SEMANTIC COGNITIVE OVERLOAD (Moderate Threshold: 0.60)
-    if get_max_similarity(text_embedding, overload_embeddings) > 0.60:
-        return "[COGNITIVE_OVERLOAD]"
 
-    # 5. EXPLICIT DISTRESS
-    if lexical_score < -0.5:
-        return "[EXPLICIT_DISTRESS]"
-        
-    # 6. SEMANTIC EMOTIONAL NUMBING (Moderate Threshold: 0.60)
-    if get_max_similarity(text_embedding, numbing_embeddings) > 0.60:
-        return "[EMOTIONAL_NUMBING]"
-        
-    # Default Fallback
-    return "[NEUTRAL_CONVERSATIONAL]"
+    # 2. Graceful degradation if the model failed to load
+    if _classifier is None:
+        return "[IMPLICIT_DISTRESS]" if is_implicit else "[NEUTRAL_CONVERSATIONAL]"
+
+    # 3. Zero-Shot Classification (The Math)
+    # The model scores P(entailment | user_text, hypothesis) for every label.
+    result = _classifier(
+        user_text,
+        candidate_labels=_LABEL_TEXTS,
+        hypothesis_template="{}",   # hypothesis IS the label description
+        multi_label=False           # pick the single most applicable label
+    )
+
+    # Map the winning label *text* back to its emotion tag
+    winning_text  = result["labels"][0]
+    winning_score = result["scores"][0]
+    best_emotion  = _LABEL_KEYS[_LABEL_TEXTS.index(winning_text)]
+
+    print(f"Router → {best_emotion}  (confidence: {winning_score:.3f})")
+
+    # 4. Low-confidence fallback
+    # If even the top label barely beats random (< 0.30 after softmax over 7 classes),
+    # trust the lexical implicit-distress flag as a safety net.
+    if winning_score < 0.30:
+        if is_implicit:
+            return "[IMPLICIT_DISTRESS]"
+        return "[NEUTRAL_CONVERSATIONAL]"
+
+    return best_emotion

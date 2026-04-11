@@ -10,7 +10,7 @@ load_dotenv()
 # 2. Initialize the Gemini Engine
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
-    temperature=0.5, # Increased slightly to prevent repetitive phrasing
+    temperature=0.7, # Raised to prevent repetitive phrasing and semantic echo
     safety_settings={
         HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -24,7 +24,8 @@ def generate_response(
     emotion_tag: str, 
     retrieved_memories: list[str], 
     user_entities: dict,
-    short_term_history: str = ""
+    short_term_history: str = "",
+    regression_note: str = ""
 ) -> str:
     
     # LAYER 1: PERSONA ANCHOR
@@ -48,7 +49,7 @@ def generate_response(
     {memories_str}
     """
     
-    # LAYER 4: EMOTIONAL STATE FRAME & ROUTING INSTRUCTIONS
+   # LAYER 4: EMOTIONAL STATE FRAME & ROUTING INSTRUCTIONS
     sub_prompts = {
         "[EXPLICIT_DISTRESS]": "Validate the pain deeply. Ask an open question about its core.",
         "[IMPLICIT_DISTRESS]": "The user is masking pain or comparing themselves. Gently name the subtext without projecting.",
@@ -63,19 +64,43 @@ def generate_response(
     layer_4_emotion = f"""
     CURRENT EMOTIONAL STATE: {emotion_tag}
     ROUTING INSTRUCTION: {routing_instruction}
+    {regression_note}  
     """
     
-    # LAYER 5: ANTI-GENERIC CONSTRAINT (The Parrot Cure)
+    # LAYER 5: ANTI-GENERIC CONSTRAINT & SYNTHESIS
     layer_5_constraint = """
     HARD CONSTRAINT:
     - ZERO generic fallbacks or platitudes (Never say "I'm sorry you're going through this" or "That sounds hard").
     - Ground your response in the specific reality the user just shared. 
-    - CRITICAL: DO NOT parrot or echo the user's exact quotes back to them. Paraphrase their underlying concepts naturally, like a real human friend would. 
-    - AVOID starting sentences with "You mentioned..." or "It sounds like..."
+    - SYNTHESIS OVER PARROTING: Never echo the user's exact phrasing verbatim. Instead, reframe, synthesize, and connect what they shared.
+    - NATURAL CALLBACKS: You are encouraged to reference prior context to show you are tracking the conversation over time, but do it naturally.
+    - AVOID clinical openers like "You mentioned..." or "It sounds like..."
+    - INFER OBVIOUS CONTEXT: If the user uses a metaphor or vague reference (like "a piece of paper"), immediately infer what it means from the short-term history (e.g., the exams) instead of asking them to clarify obvious details.
+    - NO SELF-REPETITION: You are strictly forbidden from repeating sentences or phrases you used in your previous turns. Always generate a fresh response.
     """
     
-    master_system_prompt = f"{layer_1_persona}\n{layer_2_entities}\n{layer_3_rag}\n{layer_4_emotion}\n{layer_5_constraint}"
-    
+    # NEW: Extraction Instruction
+    extraction_instruction = """
+    [SYSTEM METADATA INSTRUCTION]
+    At the very end of your response, you MUST provide a structured list of entities mentioned in the conversation so far. 
+    Format it exactly like this:
+    ENTITIES: {"people": ["Name"], "incidents": ["event"], "preferences": ["detail"]}
+
+    Rules for extraction (MANDATORY — failure to follow these is an error):
+    - CASE-INSENSITIVE NAMES: Always extract names regardless of how they are written. 
+      If the user writes 'sophia', 'SOPHIA', or 'Sophia', you MUST include 'Sophia' (Title Case) in the output.
+      Treat 'mom', 'dad', 'brother', 'sister' as named roles and include them as-is (e.g., 'Mom', 'Dad').
+    - Identify key stressors, objects, or events (e.g., 'exams', 'the paper', 'parents fighting').
+    - NO SELF-REPETITION: Do not re-use any sentence or phrase that appears earlier in your response.
+    - Do not explain this block to the user. Simply append it silently at the very end.
+    """
+
+     # ==========================================
+
+    # Combine everything
+    master_system_prompt = f"{layer_1_persona}\n{layer_2_entities}\n{layer_3_rag}\n{layer_4_emotion}\n{layer_5_constraint}\n{extraction_instruction}"
+
+
     context_prefix = f"Recent Conversation Context:\n{short_term_history}\n\n" if short_term_history else ""
     final_user_prompt = f"{context_prefix}User's Latest Message: {user_text}"
 
