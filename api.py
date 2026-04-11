@@ -1,6 +1,7 @@
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
 
 # Import our custom modules from Phases 1-4
 from detectors import lexical_scan, sarcasm_probe, implicit_distress_flag
@@ -16,6 +17,14 @@ from memory_manager import (
 from rag_engine import HybridRAGEngine
 
 app = FastAPI(title="FreudAI Backend")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Allows any frontend to connect (perfect for local testing)
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class UserMessagePayload(BaseModel):
     message: str

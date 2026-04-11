@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FreudAI | A Safe Space</title>
+    <style>
+        :root {
+            --bg-main: #FDFBF7;       
+            --bg-sidebar: #F4F1EA;    
+            --text-main: #4A4A4A;     
+            --text-muted: #827F79;
+            --accent-sage: #8FA988;   
+            --accent-hover: #7A9373;
+            --bubble-ai: #FFFFFF;
+            --bubble-user: #E8F0E6;   
+            --border-soft: #E5E1D8;
+        }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* --- OVERLAY FOR MOBILE --- */
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 998;
+            backdrop-filter: blur(2px);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar {
+            width: 280px;
+            background-color: var(--bg-sidebar);
+            border-right: 1px solid var(--border-soft);
+            padding: 30px 20px;
+            display: flex;
+            flex-direction: column;
+            z-index: 999;
+            transition: transform 0.3s ease;
+        }
+
+        .brand { 
+            color: var(--accent-sage); 
+            font-weight: 700; 
+            font-size: 1.6rem; 
+            margin-bottom: 5px;
+            letter-spacing: -0.5px;
+        }
+        
+        .status { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 40px; }
+        
+        .crisis-box {
+            background-color: #FFF5F5;
+            border-left: 4px solid #E69A9A;
+            color: #A35050;
+            padding: 15px;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .btn-reset {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border-soft);
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s ease;
+            margin-top: auto;
+            font-size: 0.9rem;
+        }
+        .btn-reset:hover { 
+            background: white; 
+            color: var(--text-main); 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        }
+
+        /* --- MAIN CONTENT --- */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 30px 50px;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Mobile Header (Hidden on Desktop) */
+        .mobile-header {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-soft);
+            margin-bottom: 15px;
+        }
+
+        .hamburger {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: var(--text-main);
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .mobile-brand {
+            color: var(--accent-sage);
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+
+        .chat-header h2 { margin: 0; color: var(--text-main); font-weight: 600;}
+        .chat-header p { margin: 8px 0 20px 0; color: var(--text-muted); font-size: 0.95rem;}
+
+        .chat-box {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding-right: 15px;
+            padding-bottom: 20px;
+        }
+
+        .chat-box::-webkit-scrollbar { width: 6px; }
+        .chat-box::-webkit-scrollbar-thumb { background: #D1CEC7; border-radius: 10px; }
+
+        .message {
+            max-width: 75%;
+            padding: 18px 22px;
+            border-radius: 20px;
+            line-height: 1.6;
+            font-size: 0.95rem;
+            animation: fadeIn 0.4s ease-out;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+            word-wrap: break-word;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background-color: var(--bubble-user);
+            color: var(--text-main);
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.ai {
+            align-self: flex-start;
+            background-color: var(--bubble-ai);
+            color: var(--text-main);
+            border: 1px solid var(--border-soft);
+            border-bottom-left-radius: 4px;
+        }
+
+        .emotion-tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            color: var(--accent-sage);
+            background: rgba(143, 169, 136, 0.1);
+            padding: 4px 10px;
+            border-radius: 12px;
+            margin-top: 10px;
+        }
+
+        /* Input Area */
+        .input-form {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            background: #FFFFFF;
+            padding: 12px;
+            border-radius: 16px;
+            border: 1px solid var(--border-soft);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            padding: 10px;
+            font-size: 1rem;
+            outline: none;
+            width: 100%;
+        }
+        
+        input[type="text"]::placeholder { color: #BDBAB3; }
+
+        .btn-send {
+            background-color: var(--accent-sage);
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-send:hover { background-color: var(--accent-hover); }
+
+        .typing { 
+            color: var(--text-muted); 
+            font-size: 0.9rem; 
+            align-self: flex-start; 
+            display: none; 
+            margin-left: 10px;
+            font-style: italic;
+        }
+
+        @keyframes fadeIn { 
+            from { opacity: 0; transform: translateY(8px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
+
+        /* ========================================= */
+        /* MOBILE RESPONSIVE MEDIA QUERIES           */
+        /* ========================================= */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                top: 0;
+                bottom: 0;
+                left: 0;
+                transform: translateX(-100%); /* Hidden by default */
+                box-shadow: 4px 0 15px rgba(0,0,0,0.05);
+            }
+
+            .sidebar.active {
+                transform: translateX(0); /* Slide in */
+            }
+
+            .overlay.active {
+                display: block;
+                opacity: 1;
+            }
+
+            .main-content {
+                padding: 15px 20px;
+            }
+
+            .chat-header {
+                display: none; /* Hide big header on mobile */
+            }
+
+            .mobile-header {
+                display: flex; /* Show small header with hamburger */
+            }
+
+            .message {
+                max-width: 85%; /* Make bubbles wider on small screens */
+                padding: 14px 18px;
+            }
+
+            .input-form {
+                padding: 8px;
+            }
+
+            .btn-send {
+                padding: 10px 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="overlay" id="mobileOverlay" onclick="toggleSidebar()"></div>
+
+    <div class="sidebar" id="sidebar">
+        <div class="brand">FreudAI</div>
+        <div class="status">A space to untangle your thoughts.</div>
+        
+        <div class="crisis-box">
+            <strong>Emergency Support</strong><br><br>
+            National Crisis Line: 988<br>
+            Text HOME to 741741
+        </div>
+
+        <button class="btn-reset" onclick="resetMemory()">Start a new chapter</button>
+    </div>
+
+    <div class="main-content">
+        
+        <div class="mobile-header">
+            <button class="hamburger" onclick="toggleSidebar()">☰</button>
+            <div class="mobile-brand">FreudAI</div>
+            <div style="width: 24px;"></div> </div>
+
+        <div class="chat-header">
+            <h2>I'm here to listen.</h2>
+            <p>Take your time. There's no rush.</p>
+        </div>
+
+        <div class="chat-box" id="chatBox">
+            <div class="message ai">Hello. What's been on your mind lately?</div>
+        </div>
+        <div class="typing" id="typingIndicator">FreudAI is thinking...</div>
+
+        <div class="input-form">
+            <input type="text" id="userInput" placeholder="Share your thoughts..." onkeypress="handleEnter(event)">
+            <button type="button" class="btn-send" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://localhost:8000";
+        const chatBox = document.getElementById("chatBox");
+        const userInput = document.getElementById("userInput");
+        const typingIndicator = document.getElementById("typingIndicator");
+        const sidebar = document.getElementById("sidebar");
+        const overlay = document.getElementById("mobileOverlay");
+
+        // Mobile Sidebar Toggle
+        function toggleSidebar() {
+            sidebar.classList.toggle("active");
+            overlay.classList.toggle("active");
+        }
+
+        function appendMessage(role, text, tag = null) {
+            const div = document.createElement("div");
+            div.className = `message ${role}`;
+            
+            let content = `<div>${text}</div>`;
+            if (tag && tag !== "[NEUTRAL_CONVERSATIONAL]") { 
+                content += `<div class="emotion-tag">Internal Routing: ${tag}</div>`;
+            }
+            
+            div.innerHTML = content;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            // Add user message to UI
+            appendMessage("user", text);
+            userInput.value = "";
+            
+            // Show typing indicator
+            typingIndicator.style.display = "block";
+
+            try {
+                const response = await fetch(`${API_URL}/chat`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: text, session_id: "default_user" })
+                });
+
+                if (!response.ok) throw new Error("Network response was not ok");
+                
+                const data = await response.json();
+                typingIndicator.style.display = "none";
+                
+                // Add AI message to UI
+                appendMessage("ai", data.response, data.emotion_tag);
+                
+            } catch (error) {
+                typingIndicator.style.display = "none";
+                appendMessage("ai", "I seem to have lost my connection. Could you make sure my server is running?");
+                console.error("Error:", error);
+            }
+        }
+
+        function handleEnter(event) {
+            if (event.key === "Enter") {
+                event.preventDefault(); // STOPS THE PAGE FROM REFRESHING!
+                sendMessage();
+            }
+        }
+
+        async function resetMemory() {
+            try {
+                await fetch(`${API_URL}/reset`, { method: "POST" });
+                chatBox.innerHTML = '<div class="message ai">Memory cleared. Let\'s start fresh whenever you are ready.</div>';
+                // Close sidebar on mobile after clicking reset
+                if (window.innerWidth <= 768) {
+                    toggleSidebar();
+                }
+            } catch (error) {
+                alert("I couldn't reset the memory. Please check my server connection.");
+            }
+        }
+    </script>
+</body>
+</html>
