@@ -176,3 +176,6 @@ pyrightconfig.json
 .chroma_db/
 entity_store.json
 # End of https://www.toptal.com/developers/gitignore/api/python
+
+node_modules/
+dist/

@@ -1,20 +1,20 @@
-# --- Phase 1: Core APIs & UI ---
+# --- Core Backend ---
 fastapi
 uvicorn
 pydantic
-streamlit
 requests
 python-dotenv
 
-# --- Phase 1: AI & Inference ---
+# --- AI & Inference ---
 langchain
 langchain-google-genai
+google-generativeai
 sentence-transformers
 transformers
 textblob
+torch
 
-# --- Phases 2 & 3: Memory & RAG (Future-proofing) ---
+# --- Memory & RAG ---
 chromadb
-faiss-cpu
 rank-bm25
 spacy

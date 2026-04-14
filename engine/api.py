@@ -1,3 +1,10 @@
+import sys
+import os
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -18,7 +25,6 @@ from memory_manager import (
     memory_collection,
     wipe_all_memory
 )
-from rag_engine import HybridRAGEngine
 
 app = FastAPI(title="FreudAI Backend")
 
@@ -38,9 +44,6 @@ class UserMessagePayload(BaseModel):
 chat_history = []
 emotion_history = []
 engine = HybridRAGEngine()
-
-import json
-import re
 
 @app.post("/chat")
 async def chat_endpoint(payload: UserMessagePayload):

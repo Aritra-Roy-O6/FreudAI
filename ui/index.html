@@ -4,209 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>FreudAI | A Safe Space</title>
-    <style>
-        :root {
-            --bg-main: #FDFBF7;       
-            --bg-sidebar: #F4F1EA;    
-            --text-main: #4A4A4A;     
-            --text-muted: #827F79;
-            --accent-sage: #8FA988;   
-            --accent-hover: #7A9373;
-            --bubble-ai: #FFFFFF;
-            --bubble-user: #E8F0E6;   
-            --border-soft: #E5E1D8;
-        }
-
-        body {
-            margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-main);
-            color: var(--text-main);
-            display: flex;
-            height: 100vh;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .overlay {
-            display: none;
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.3); z-index: 998; backdrop-filter: blur(2px);
-            opacity: 0; transition: opacity 0.3s ease;
-        }
-
-        /* --- SIDEBAR & MEMORY PANEL --- */
-        .sidebar {
-            width: 280px; background-color: var(--bg-sidebar); border-right: 1px solid var(--border-soft);
-            padding: 30px 20px; display: flex; flex-direction: column; z-index: 999;
-            transition: transform 0.3s ease;
-        }
-        /* NEW: Team Credits */
-        .team-credits {
-            margin-top: 15px;
-            margin-bottom: 15px;
-            padding-top: 15px;
-            border-top: 1px solid var(--border-soft);
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            line-height: 1.5;
-        }
-        .team-credits strong { color: var(--accent-sage); }
-        .team-credits .heart { color: #E69A9A; }
-
-        .brand { color: var(--accent-sage); font-weight: 700; font-size: 1.6rem; margin-bottom: 5px; letter-spacing: -0.5px; }
-        .status { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 25px; }
-        
-        /* NEW: Memory Panel */
-        .memory-panel {
-            background-color: #FFFFFF;
-            border: 1px solid var(--border-soft);
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
-            flex-grow: 0;
-        }
-        .memory-panel h3 { margin: 0 0 10px 0; font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;}
-        .memory-list { list-style: none; padding: 0; margin: 0; font-size: 0.85rem; color: var(--text-main); max-height: 150px; overflow-y: auto;}
-        .memory-list li { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px dashed var(--border-soft); display: flex; justify-content: space-between;}
-        .memory-list li:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0;}
-        .entity-type { color: var(--accent-sage); font-size: 0.75rem; font-weight: 600;}
-
-        .crisis-box {
-            background-color: #FFF5F5; border-left: 4px solid #E69A9A; color: #A35050;
-            padding: 15px; border-radius: 0 8px 8px 0; margin-bottom: 20px; font-size: 0.85rem; line-height: 1.4;
-        }
-
-        /* Dynamic Crisis Banner — appears above chat when CRISIS fires */
-        .crisis-banner {
-            display: none;
-            background: linear-gradient(135deg, #DC3545 0%, #A71D2A 100%);
-            color: #FFFFFF;
-            padding: 16px 24px;
-            border-radius: 12px;
-            margin-bottom: 16px;
-            font-size: 0.92rem;
-            line-height: 1.5;
-            box-shadow: 0 4px 20px rgba(220, 53, 69, 0.35);
-            animation: crisisPulse 2s ease-in-out infinite, crisisSlideIn 0.4s ease-out;
-            position: relative;
-            overflow: hidden;
-        }
-        .crisis-banner::before {
-            content: '';
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
-            animation: crisisShimmer 3s ease-in-out infinite;
-        }
-        .crisis-banner strong { font-size: 1rem; }
-        .crisis-banner .crisis-numbers {
-            display: flex; gap: 20px; margin-top: 8px; font-weight: 600; font-size: 0.95rem;
-        }
-        .crisis-banner .crisis-numbers span {
-            background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 6px;
-        }
-        @keyframes crisisPulse {
-            0%, 100% { box-shadow: 0 4px 20px rgba(220, 53, 69, 0.35); }
-            50% { box-shadow: 0 4px 30px rgba(220, 53, 69, 0.6); }
-        }
-        @keyframes crisisSlideIn {
-            from { opacity: 0; transform: translateY(-12px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes crisisShimmer {
-            0%   { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-
-        /* Crisis-tagged AI bubble */
-        .message.ai.crisis-msg {
-            border: 2px solid #DC3545;
-            background: #FFF5F5;
-            box-shadow: 0 2px 12px rgba(220, 53, 69, 0.12);
-        }
-        .message.ai.crisis-msg .emotion-tag { color: #DC3545; font-weight: 600; }
-        .message.ai.crisis-msg .emotion-tag .dot { color: #DC3545; }
-
-        .btn-reset {
-            background: transparent; color: var(--text-muted); border: 1px solid var(--border-soft);
-            padding: 12px; border-radius: 8px; cursor: pointer; transition: 0.2s ease; margin-top: auto; font-size: 0.9rem;
-        }
-        .btn-reset:hover { background: white; color: var(--text-main); box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
-
-        /* --- MAIN CONTENT & CONVERSATION ARC --- */
-        .main-content {
-            flex: 1; display: flex; flex-direction: column; padding: 30px 50px; max-width: 900px; margin: 0 auto; width: 100%; box-sizing: border-box;
-        }
-
-        .mobile-header { display: none; align-items: center; justify-content: space-between; padding-bottom: 15px; border-bottom: 1px solid var(--border-soft); margin-bottom: 15px; }
-        .hamburger { background: none; border: none; font-size: 1.5rem; color: var(--text-main); cursor: pointer; padding: 0; }
-        .mobile-brand { color: var(--accent-sage); font-weight: 700; font-size: 1.2rem; }
-
-        .chat-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; border-bottom: 1px solid var(--border-soft); padding-bottom: 15px;}
-        .header-text h2 { margin: 0; color: var(--text-main); font-weight: 600;}
-        .header-text p { margin: 5px 0 0 0; color: var(--text-muted); font-size: 0.95rem;}
-        
-        /* NEW: Arc Indicator */
-        .arc-container {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            background: #FFFFFF;
-            padding: 6px 12px;
-            border-radius: 20px;
-            border: 1px solid var(--border-soft);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .arc-step { color: var(--text-main); font-weight: 500;}
-        .arc-arrow { color: #D1CEC7; font-size: 0.7rem;}
-
-        .chat-box { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; padding-right: 15px; padding-bottom: 20px; }
-        .chat-box::-webkit-scrollbar { width: 6px; }
-        .chat-box::-webkit-scrollbar-thumb { background: #D1CEC7; border-radius: 10px; }
-
-        .message { max-width: 75%; padding: 18px 22px; border-radius: 20px; line-height: 1.6; font-size: 0.95rem; animation: fadeIn 0.4s ease-out; box-shadow: 0 2px 10px rgba(0,0,0,0.02); word-wrap: break-word; }
-        .message.user { align-self: flex-end; background-color: var(--bubble-user); color: var(--text-main); border-bottom-right-radius: 4px; }
-        .message.ai { align-self: flex-start; background-color: var(--bubble-ai); color: var(--text-main); border: 1px solid var(--border-soft); border-bottom-left-radius: 4px; }
-
-        /* NEW: Stylized Emotion Tag */
-        .emotion-tag {
-            display: inline-block;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 10px;
-            font-style: italic;
-        }
-        .emotion-tag .dot { color: var(--accent-sage); font-weight: bold; margin-right: 4px;}
-
-        .input-form { display: flex; gap: 12px; margin-top: 20px; background: #FFFFFF; padding: 12px; border-radius: 16px; border: 1px solid var(--border-soft); box-shadow: 0 4px 15px rgba(0,0,0,0.02); }
-        input[type="text"] { flex: 1; background: transparent; border: none; color: var(--text-main); padding: 10px; font-size: 1rem; outline: none; width: 100%; }
-        input[type="text"]::placeholder { color: #BDBAB3; }
-        .btn-send { background-color: var(--accent-sage); color: white; border: none; padding: 10px 24px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: 0.2s; }
-        .btn-send:hover { background-color: var(--accent-hover); }
-        .typing { color: var(--text-muted); font-size: 0.9rem; align-self: flex-start; display: none; margin-left: 10px; font-style: italic; }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-
-        @media (max-width: 768px) {
-            .sidebar { position: fixed; top: 0; bottom: 0; left: 0; transform: translateX(-100%); box-shadow: 4px 0 15px rgba(0,0,0,0.05); }
-            .sidebar.active { transform: translateX(0); }
-            .overlay.active { display: block; opacity: 1; }
-            .main-content { padding: 15px 20px; }
-            .chat-header { display: none; }
-            .mobile-header { display: flex; }
-            .message { max-width: 85%; padding: 14px 18px; }
-            .input-form { padding: 8px; }
-            .btn-send { padding: 10px 16px; }
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
+    <div id="onboardingScreen" class="onboarding-container">
+        <div class="onboarding-card">
+            <h1 class="brand" style="text-align: center; margin-bottom: 10px;">FreudAI</h1>
+            <p class="status" style="text-align: center;">Privacy-first emotional support. <br>Your data never leaves this device.</p>
+            
+            <div class="key-instructions">
+                <h3>Welcome to your secure space.</h3>
+                <p>To keep FreudAI 100% free and private, it runs using your own personal Google Gemini API key. We will encrypt this key and store it safely on your local hard drive.</p>
+                <ol>
+                    <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>.</li>
+                    <li>Sign in and click "Create API Key".</li>
+                    <li>Paste your key below.</li>
+                </ol>
+            </div>
+
+            <div class="key-input-group">
+                <input type="password" id="apiKeyInput" placeholder="AIzaSy..." autocomplete="off">
+                <button onclick="handleKeySubmit()" class="btn-send">Unlock FreudAI</button>
+            </div>
+            <p id="keyError" class="error-msg" style="display: none;"></p>
+        </div>
+    </div>
+
     <div class="overlay" id="mobileOverlay" onclick="toggleSidebar()"></div>
 
-    <div class="sidebar" id="sidebar">
+    <div class="sidebar" id="sidebar" style="display: none;">
         <div class="brand">FreudAI</div>
         <div class="status">A space to untangle your thoughts.</div>
         
@@ -237,7 +64,7 @@
         <button class="btn-reset" onclick="resetMemory()">Start a new chapter</button>
     </div>
 
-    <div class="main-content">
+    <div class="main-content" id="mainContent" style="display: none;">
         <div class="mobile-header">
             <button class="hamburger" onclick="toggleSidebar()">☰</button>
             <div class="mobile-brand">FreudAI</div>
@@ -273,155 +100,6 @@
         </div>
     </div>
 
-    <script>
-        const API_URL = "http://localhost:8000";
-        const chatBox = document.getElementById("chatBox");
-        const userInput = document.getElementById("userInput");
-        const typingIndicator = document.getElementById("typingIndicator");
-        const sidebar = document.getElementById("sidebar");
-        const overlay = document.getElementById("mobileOverlay");
-        const memoryList = document.getElementById("memoryList");
-        const arcContainer = document.getElementById("arcContainer");
-        const crisisBanner = document.getElementById("crisisBanner");
-
-        function toggleSidebar() {
-            sidebar.classList.toggle("active");
-            overlay.classList.toggle("active");
-        }
-
-        // Formats [IMPLICIT_DISTRESS] -> "implicit distress"
-        function formatEmotionTag(tag) {
-            if (!tag) return "";
-            return tag.replace('[', '').replace(']', '').replace(/_/g, ' ').toLowerCase();
-        }
-
-        function appendMessage(role, text, tag = null) {
-            const div = document.createElement("div");
-            div.className = `message ${role}`;
-
-            // Add crisis styling to AI crisis responses
-            if (role === 'ai' && tag === '[CRISIS_SIGNAL_ESCALATE]') {
-                div.classList.add('crisis-msg');
-            }
-            
-            let content = `<div>${text}</div>`;
-            if (tag && tag !== "[NEUTRAL_CONVERSATIONAL]") { 
-                content += `<div class="emotion-tag"><span class="dot">●</span> sensing: ${formatEmotionTag(tag)}</div>`;
-            }
-            
-            div.innerHTML = content;
-            chatBox.appendChild(div);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        function updateMemoryPanel(entities) {
-            console.log("[FreudAI] Entities received:", JSON.stringify(entities));
-            if (!entities) return;
-
-            // Collect all renderable items across every category
-            const rows = [];
-            for (const [category, data] of Object.entries(entities)) {
-                const label = category.replace('context', '').trim();
-                if (Array.isArray(data)) {
-                    data.forEach(item => {
-                        if (typeof item === 'string' && item.trim()) {
-                            rows.push({ text: item.trim(), label });
-                        }
-                    });
-                } else if (typeof data === 'string' && data.trim()) {
-                    rows.push({ text: data.trim(), label });
-                }
-            }
-
-            if (rows.length === 0) {
-                // Nothing extracted yet — keep the placeholder
-                memoryList.innerHTML = '<li style="color: #BDBAB3; font-style: italic;">Listening and learning...</li>';
-                return;
-            }
-
-            // Render all collected items
-            memoryList.innerHTML = rows
-                .map(r => `<li><span>${r.text}</span><span class="entity-type">${r.label}</span></li>`)
-                .join("");
-        }
-
-
-        function updateArcIndicator(historyArray) {
-            if (!historyArray || historyArray.length === 0) return;
-            
-            let arcHTML = "Trajectory: ";
-            const formattedSteps = historyArray.map(tag => `<span class="arc-step">${formatEmotionTag(tag)}</span>`);
-            arcHTML += formattedSteps.join(' <span class="arc-arrow">➔</span> ');
-            
-            arcContainer.innerHTML = arcHTML;
-        }
-
-        async function sendMessage() {
-            const text = userInput.value.trim();
-            if (!text) return;
-
-            appendMessage("user", text);
-            userInput.value = "";
-            typingIndicator.style.display = "block";
-
-            try {
-                const response = await fetch(`${API_URL}/chat`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ message: text, session_id: "default_user" })
-                });
-
-                if (!response.ok) throw new Error("Network response was not ok");
-                
-                const data = await response.json();
-                typingIndicator.style.display = "none";
-                
-                // 1. Render AI Message
-                appendMessage("ai", data.response, data.emotion_tag);
-                
-                // 2. Show/Hide Crisis Banner
-                if (data.emotion_tag === '[CRISIS_SIGNAL_ESCALATE]') {
-                    crisisBanner.style.display = 'block';
-                } else {
-                    crisisBanner.style.display = 'none';
-                }
-
-                // 3. Update UI Panels with new data
-                if (data.entities) updateMemoryPanel(data.entities);
-                if (data.emotion_arc) updateArcIndicator(data.emotion_arc);
-                
-            } catch (error) {
-                typingIndicator.style.display = "none";
-                appendMessage("ai", "I seem to have lost my connection. Could you make sure my server is running?");
-                console.error("Error:", error);
-            }
-        }
-
-        function handleEnter(event) {
-            if (event.key === "Enter") {
-                event.preventDefault(); 
-                sendMessage();
-            }
-        }
-
-        async function resetMemory() {
-            try {
-                const res = await fetch(`${API_URL}/reset`, { method: "POST" });
-                if (!res.ok) throw new Error(`Server returned ${res.status}`);
-
-                chatBox.innerHTML = '<div class="message ai">Memory cleared. Let\'s start fresh whenever you are ready.</div>';
-
-                // Reset ALL visual panels to their baseline state
-                crisisBanner.style.display = 'none';
-                memoryList.innerHTML = '<li style="color: #BDBAB3; font-style: italic;">Listening and learning...</li>';
-                arcContainer.innerHTML = 'Trajectory: <span class="arc-step">Establishing Baseline</span>';
-
-                if (window.innerWidth <= 768) toggleSidebar();
-            } catch (error) {
-                console.error("Reset failed:", error);
-                alert("I couldn't reset the memory. Please check my server connection.");
-            }
-        }
-    </script>
+    <script src="scripts.js"></script>
 </body>
 </html>
