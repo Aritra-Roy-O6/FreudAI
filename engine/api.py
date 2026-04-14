@@ -39,6 +39,7 @@ app.add_middleware(
 class UserMessagePayload(BaseModel):
     message: str
     session_id: str = "default_user"
+    api_key: str = None  
 
 # Global state for short-term memory (in-memory list for MVP)
 chat_history = []
@@ -93,7 +94,8 @@ async def chat_endpoint(payload: UserMessagePayload):
             retrieved_memories=retrieved_memories,
             user_entities=user_entities,
             short_term_history=short_term_context,
-            regression_note=regression_note
+            regression_note=regression_note,
+            api_key=payload.api_key
         )
 
         # SEPARATE THE CHAT FROM THE DATA

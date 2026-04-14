@@ -1,4 +1,3 @@
-import os
 import json
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI, HarmCategory, HarmBlockThreshold
@@ -25,8 +24,23 @@ def generate_response(
     retrieved_memories: list[str], 
     user_entities: dict,
     short_term_history: str = "",
-    regression_note: str = ""
+    regression_note: str = "",
+    api_key: str = None
 ) -> str:
+    
+    # 1. Safety Check
+    if not api_key:
+        return "System Alert: No API key detected. Please reset your settings and provide a valid Google AI Studio key."
+
+    # 2. Dynamic Initialization (using the BYOK key!)
+    try:
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash", 
+            google_api_key=api_key,   
+            temperature=0.5
+        )
+    except Exception as e:
+         return f"System Alert: Failed to initialize AI model. Is your API key valid? Error: {e}"
     
     # LAYER 1: PERSONA ANCHOR
     layer_1_persona = """
