@@ -43,7 +43,7 @@ try:
     # try its default (which will crash), but our error logs above will tell us why.
     if embedding_func:
         memory_collection = chroma_client.get_or_create_collection(
-            name="user_long_term_memory",
+            name="freud_cloud_memory",
             embedding_function=embedding_func
         )
         print(f"✓ ChromaDB running at {MEMORY_DIR}")
