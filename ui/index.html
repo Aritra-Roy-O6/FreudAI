@@ -76,8 +76,11 @@
                 <h2>I'm here to listen.</h2>
                 <p>Take your time. There's no rush.</p>
             </div>
-            <div class="arc-container" id="arcContainer">
-                Trajectory: <span class="arc-step">Establishing Baseline</span>
+            <div style="display: flex; gap: 15px; align-items: center;">
+                <div class="arc-container" id="arcContainer">
+                    Trajectory: <span class="arc-step">Establishing Baseline</span>
+                </div>
+                <button id="settingsBtn" class="icon-btn" onclick="toggleSettings()" title="Settings">⚙️</button>
             </div>
         </div>
 
@@ -89,6 +92,7 @@
                 <span>💬 Text HOME to 741741</span>
             </div>
         </div>
+        
         <div class="chat-box" id="chatBox">
             <div class="message ai">Hello. What's been on your mind lately?</div>
         </div>
@@ -97,6 +101,30 @@
         <div class="input-form">
             <input type="text" id="userInput" placeholder="Share your thoughts..." onkeypress="handleEnter(event)">
             <button type="button" class="btn-send" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="toggleSettings()" style="float: right; cursor: pointer; font-size: 1.5rem;">&times;</span>
+            <h2 style="margin-top: 0;">Settings</h2>
+            
+            <div class="setting-item">
+                <label style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 5px; display: block;">Theme Preference</label>
+                <select id="themeSelect" onchange="updateTheme()" style="padding: 10px; border-radius: 8px; border: 1px solid var(--border-soft); background: var(--bg-main); color: var(--text-main); width: 100%;">
+                    <option value="light">Light Mode</option>
+                    <option value="dark">Dark Mode</option>
+                </select>
+            </div>
+
+            <div class="setting-item" style="margin-top: 20px;">
+                <label style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 5px; display: block;">Gemini API Key</label>
+                <div class="password-wrapper">
+                    <input type="password" id="settingsKeyInput" readonly>
+                    <button onclick="toggleKeyVisibility()" id="eyeBtn" class="icon-btn" style="background: var(--bg-sidebar); border: 1px solid var(--border-soft); border-radius: 8px; padding: 0 10px;">👁️</button>
+                </div>
+                <button class="btn-reset" style="margin-top: 15px; border-color: #DC3545; color: #DC3545; width: 100%;" onclick="removeKey()">Remove API Key</button>
+            </div>
         </div>
     </div>
 

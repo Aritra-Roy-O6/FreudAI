@@ -1,163 +1,144 @@
 import os
+import sys
 import json
 import chromadb
-from chromadb.utils import embedding_functions
 import uuid
+import base64
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import PromptTemplate
 
 # ==========================================
-# STEP 1: STORAGE ENVIRONMENT INITIALIZATION
+# STEP 4: ENCRYPTION LAYER (Privacy Vault)
 # ==========================================
+class PrivacyVault:
+    def __init__(self):
+        self.key = self._generate_machine_key()
+        self.fernet = Fernet(self.key)
 
-# Define where our memory will live on your local machine
-ENTITY_FILE = "entity_store.json"
-CHROMA_DB_PATH = "./chroma_db"
+    def _generate_machine_key(self):
+        """Generates a hardware-bound key using the machine's unique ID."""
+        # node returns the hardware address (MAC) of the machine
+        machine_id = str(uuid.getnode()).encode()
+        
+        # Use PBKDF2 to turn the machine ID into a valid 32-byte AES key
+        salt = b'freud_salt_123' # Static salt is fine since ID is unique per machine
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(machine_id))
+        return key
 
-print("Initializing Storage Environment...")
+    def encrypt_data(self, data_str):
+        return self.fernet.encrypt(data_str.encode()).decode()
 
-# 1A. Initialize ChromaDB (Long-Term Vector Memory)
-# We use PersistentClient so the AI's memory survives even if you restart your computer or server.
-chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+    def decrypt_data(self, encrypted_str):
+        try:
+            return self.fernet.decrypt(encrypted_str.encode()).decode()
+        except Exception:
+            # If decryption fails (e.g., file tampered with), return empty object
+            return "{}"
 
-# 1B. Setup the Embedding Function
-# This automatically converts text into math (vectors) so the AI can search by "meaning" later.
-embedding_func = embedding_functions.DefaultEmbeddingFunction()
-
-# 1C. Create the Database Collection
-# Think of a 'collection' like a specific folder or table dedicated to storing the user's conversational history.
-memory_collection = chroma_client.get_or_create_collection(
-    name="user_long_term_memory",
-    embedding_function=embedding_func
-)
-
-print(f"Success: ChromaDB running at {CHROMA_DB_PATH}")
-print(f"Success: Entity tracking will be saved to {ENTITY_FILE}")
+vault = PrivacyVault()
 
 # ==========================================
-# STEP 2: ENTITY LEDGER LOGIC (JSON)
+# STEP 1: RELOCATE PERSISTENCE
 # ==========================================
-
-def load_entities() -> dict:
-    """Loads the entity ledger from disk, or initializes a new one if it doesn't exist."""
-    if not os.path.exists(ENTITY_FILE):
-        # Initialize the blank memory schema — MUST be lists, not dicts
-        return {
-            "people": [],
-            "incidents": [],
-            "preferences": []
-        }
-    with open(ENTITY_FILE, "r") as f:
-        return json.load(f)
-
-def save_entities(entities_dict: dict):
-    """Saves the fully updated entity ledger back to disk."""
-    with open(ENTITY_FILE, "w") as f:
-        json.dump(entities_dict, f, indent=4)
-
-def update_entity(category: str, key: str, value: dict):
-    """Helper function to safely update a specific entity and save the file."""
-    ledger = load_entities()
-    if category in ledger:
-        ledger[category][key] = value
-        save_entities(ledger)
-        print(f"Success: Entity updated -> [{category}] {key}")
+def get_app_data_dir():
+    if os.name == 'nt':
+        base_dir = os.environ.get('APPDATA')
     else:
-        print(f"Error: Category '{category}' not found in schema.")
+        base_dir = os.path.expanduser('~/Library/Application Support' if sys.platform == 'darwin' else '~/.config')
+    
+    app_dir = os.path.join(base_dir, 'FreudAI')
+    os.makedirs(app_dir, exist_ok=True)
+    return app_dir
+
+APP_DIR = get_app_data_dir()
+MEMORY_DIR = os.path.join(APP_DIR, 'chroma_db')
+ENTITY_FILE = os.path.join(APP_DIR, 'entity_store.json.enc') # Changed extension to .enc
+
+# Init ChromaDB
+try:
+    chroma_client = chromadb.PersistentClient(path=MEMORY_DIR)
+    memory_collection = chroma_client.get_or_create_collection(name="freud_memories")
+except Exception as e:
+    print(f"[Memory Error] ChromaDB Init Failed: {e}")
+    memory_collection = None
 
 # ==========================================
-# STEP 3: CHROMADB READ/WRITE LOGIC
+# CORE MEMORY FUNCTIONS (NOW WITH ENCRYPTION)
 # ==========================================
+def load_entities():
+    if os.path.exists(ENTITY_FILE):
+        try:
+            with open(ENTITY_FILE, 'r', encoding='utf-8') as f:
+                encrypted_blob = f.read()
+                decrypted_json = vault.decrypt_data(encrypted_blob)
+                return json.loads(decrypted_json)
+        except Exception as e:
+            print(f"[Vault Error] Failed to decrypt ledger: {e}")
+    return {}
 
-def store_in_long_term_memory(user_text: str, bot_response: str, emotion_tag: str, session_id: str = "default_user"):
-    """
-    Saves the conversational turn into the vector database.
-    """
-    # We combine both sides of the conversation so the AI remembers context and its own advice
-    memory_chunk = f"User: {user_text}\nAI: {bot_response}"
+def save_entities(entities):
+    try:
+        json_str = json.dumps(entities, indent=4)
+        encrypted_blob = vault.encrypt_data(json_str)
+        with open(ENTITY_FILE, 'w', encoding='utf-8') as f:
+            f.write(encrypted_blob)
+    except Exception as e:
+        print(f"[Vault Error] Encryption failed: {e}")
+
+def store_in_long_term_memory(user_text, bot_reply, emotion_tag, session_id="default"):
+    if not memory_collection: return
     doc_id = str(uuid.uuid4())
-    
-    metadata = {
-        "session_id": session_id,
-        "emotion_tag": emotion_tag,
-        "type": "conversation_turn"
-    }
-    
+    memory_text = f"User: {user_text} | AI: {bot_reply}"
     memory_collection.add(
-        documents=[memory_chunk],
-        metadatas=[metadata],
+        documents=[memory_text],
+        metadatas=[{"session_id": session_id, "emotion": emotion_tag}],
         ids=[doc_id]
     )
-    print(f"Success: Memory stored -> ID: {doc_id[:8]}... | Tag: {emotion_tag}")
 
-def retrieve_relevant_memory(query_text: str, n_results: int = 1) -> list:
-    """
-    Searches the vector database for past context relevant to the current user input.
-    """
-    # If the database is empty, return nothing to prevent errors
-    if memory_collection.count() == 0:
-        return []
+def get_short_term_context(chat_history, window_size=8):
+    return chat_history[-window_size:]
 
-    # Query ChromaDB for the most semantically similar memories
-    results = memory_collection.query(
-        query_texts=[query_text],
-        n_results=n_results
-    )
-    
-    # Extract and return the actual text documents
-    if results and 'documents' in results and results['documents'][0]:
-        return results['documents'][0]
-    return []
-
-# ==========================================
-# STEP 4: SHORT-TERM CONTEXT WINDOW
-# ==========================================
-
-def get_short_term_context(full_history: list, window_size: int = 8) -> list:
-    """
-    Slices the full chat history to return only the most recent N turns.
-    Prevents the LLM prompt from overflowing while maintaining immediate continuity.
-    """
-    return full_history[-window_size:]
-
-
-# --- Temporary Test Block for Phase 2 ---
-if __name__ == "__main__":
-    import time
-    print("\n--- Testing Step 3 & 4: Vector Memory ---")
-    
-    # 1. Store a memory (Simulating a past conversation)
-    store_in_long_term_memory(
-        user_text="Everyone else here just seems to have it figured out. I don't even know why I'm at uni honestly.",
-        bot_response="That feeling of not belonging, like everyone else got a manual you didn't. Is that just about uni?",
-        emotion_tag="[IMPLICIT_DISTRESS]"
-    )
-    
-    time.sleep(1) # Brief pause to ensure the database writes successfully
-    
-    # 2. Retrieve a memory (Simulating the user mentioning school later)
-    print("\nSimulating user saying: 'School is just too much right now.'")
-    print("Searching database for semantic matches...\n")
-    
-    recalled_memories = retrieve_relevant_memory("school")
-    
-    if recalled_memories:
-        print("✅ MEMORY RECALLED SUCCESSFULLY:")
-        for mem in recalled_memories:
-            print(f" -> {mem}")
-    else:
-        print("❌ Retrieval failed.")
-
-# ==========================================
-# STEP 5: MEMORY WIPE (NEW CHAT)
-# ==========================================
 def wipe_all_memory():
-    """Completely erases the JSON entity ledger and all ChromaDB vectors."""
-    # 1. Erase the Entity Ledger
     if os.path.exists(ENTITY_FILE):
         os.remove(ENTITY_FILE)
+    if chroma_client:
+        try:
+            chroma_client.delete_collection("freud_memories")
+            global memory_collection
+            memory_collection = chroma_client.get_or_create_collection("freud_memories")
+        except: pass
+
+# ==========================================
+# STEP 2: SUMMARIZER
+# ==========================================
+def summarize_session(chat_history, api_key):
+    if not chat_history or len(chat_history) < 6: return 
+    history_text = "\n".join(chat_history)
+    try:
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key, temperature=0.1)
+        prompt = PromptTemplate(
+            input_variables=["history"],
+            template="Extract permanent user traits, relationships, and stressors from this chat as a JSON object:\n{history}"
+        )
+        chain = prompt | llm
+        response = chain.invoke({"history": history_text})
+        raw_json = response.content.replace('`{3}json', '').replace('`{3}', '').strip()
+        new_traits = json.loads(raw_json)
         
-    # 2. Erase the Vector Database
-    all_docs = memory_collection.get()
-    if all_docs and all_docs.get('ids'):
-        memory_collection.delete(ids=all_docs['ids'])
-        
-    print("Success: Total memory wipe completed.")
+        existing_entities = load_entities()
+        for cat, traits in new_traits.items():
+            if cat not in existing_entities: existing_entities[cat] = []
+            for t in traits:
+                if t not in existing_entities[cat]: existing_entities[cat].append(t)
+        save_entities(existing_entities)
+    except Exception as e:
+        print(f"[Summarizer Error] {e}")

@@ -13,5 +13,9 @@ contextBridge.exposeInMainWorld('api', {
     // Communication with Electron Vault
     hasKey: () => ipcRenderer.invoke('has-key'),
     saveKey: (key) => ipcRenderer.invoke('save-key', key),
-    getKey: () => ipcRenderer.invoke('get-key')
+    getKey: () => ipcRenderer.invoke('get-key'),
+
+    getTheme: () => ipcRenderer.invoke('get-theme'),
+    setTheme: (theme) => ipcRenderer.invoke('set-theme', theme)
+
 });

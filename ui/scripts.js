@@ -1,3 +1,4 @@
+// --- DOM ELEMENTS ---
 const chatBox = document.getElementById("chatBox");
 const userInput = document.getElementById("userInput");
 const typingIndicator = document.getElementById("typingIndicator");
@@ -8,15 +9,29 @@ const overlay = document.getElementById("mobileOverlay");
 const memoryList = document.getElementById("memoryList");
 const arcContainer = document.getElementById("arcContainer");
 const crisisBanner = document.getElementById("crisisBanner");
+const settingsModal = document.getElementById("settingsModal");
 
-// --- INITIALIZATION (GATEKEEPER) ---
+// --- INITIALIZATION ---
 async function initializeApp() {
-    const hasKey = await window.api.hasKey();
-    if (hasKey) {
-        showMainApp();
-    } else {
-        onboardingScreen.style.display = "flex";
+    const theme = await window.api.getTheme();
+    document.getElementById("themeSelect").value = theme;
+    applyTheme(theme);
+    
+    if (await window.api.hasKey()) { 
+        showMainApp(); 
+    } else { 
+        onboardingScreen.style.display = "flex"; 
     }
+}
+
+function applyTheme(theme) {
+    theme === 'dark' ? document.body.classList.add('dark-mode') : document.body.classList.remove('dark-mode');
+}
+
+async function updateTheme() {
+    const theme = document.getElementById("themeSelect").value;
+    await window.api.setTheme(theme);
+    applyTheme(theme);
 }
 
 function showMainApp() {
@@ -25,91 +40,55 @@ function showMainApp() {
     mainContent.style.display = "flex";
 }
 
+// --- GATEKEEPER / AUTH ---
 async function handleKeySubmit() {
-    const keyInput = document.getElementById("apiKeyInput");
-    const errorMsg = document.getElementById("keyError");
-    const key = keyInput.value.trim();
-
+    const key = document.getElementById("apiKeyInput").value.trim();
     if (!key.startsWith("AIza")) {
-        errorMsg.textContent = "Invalid key format. Gemini keys usually start with 'AIza'.";
-        errorMsg.style.display = "block";
+        const err = document.getElementById("keyError");
+        err.textContent = "Invalid format. Gemini keys usually start with 'AIza'.";
+        err.style.display = "block";
         return;
     }
-
-    // Save it securely to the OS via Electron
     const result = await window.api.saveKey(key);
-    
-    if (result.success) {
-        showMainApp();
+    result.success ? showMainApp() : alert("Secure storage failed: " + result.error);
+}
+
+// --- SETTINGS ---
+async function toggleSettings() {
+    if (settingsModal.style.display === "flex") {
+        settingsModal.style.display = "none";
     } else {
-        errorMsg.textContent = "Error saving key securely: " + result.error;
-        errorMsg.style.display = "block";
+        settingsModal.style.display = "flex";
+        document.getElementById("settingsKeyInput").value = await window.api.getKey() || "";
     }
 }
 
-// Run init on load
-initializeApp();
-
-// --- EXISTING CHAT LOGIC ---
-
-function toggleSidebar() {
-    sidebar.classList.toggle("active");
-    overlay.classList.toggle("active");
+function toggleKeyVisibility() {
+    const input = document.getElementById("settingsKeyInput");
+    input.type = input.type === "password" ? "text" : "password";
 }
 
-function formatEmotionTag(tag) {
-    if (!tag) return "";
-    return tag.replace('[', '').replace(']', '').replace(/_/g, ' ').toLowerCase();
+async function removeKey() {
+    if (confirm("Remove API Key and lock the app?")) { 
+        await window.api.removeKey(); 
+        window.location.reload(); 
+    }
 }
 
+// --- CHAT LOGIC ---
 function appendMessage(role, text, tag = null) {
     const div = document.createElement("div");
     div.className = `message ${role}`;
-
-    if (role === 'ai' && tag === '[CRISIS_SIGNAL_ESCALATE]') {
-        div.classList.add('crisis-msg');
-    }
-    
     let content = `<div>${text}</div>`;
-    if (tag && tag !== "[NEUTRAL_CONVERSATIONAL]") { 
-        content += `<div class="emotion-tag"><span class="dot">●</span> sensing: ${formatEmotionTag(tag)}</div>`;
+    
+    if (tag && tag !== "[NEUTRAL_CONVERSATIONAL]") {
+        const cleanTag = tag.replace(/[\[\]]/g, '').replace(/_/g, ' ').toLowerCase();
+        content += `<div class="emotion-tag">sensing: ${cleanTag}</div>`;
     }
     
     div.innerHTML = content;
     chatBox.appendChild(div);
     chatBox.scrollTop = chatBox.scrollHeight;
-}
-
-function updateMemoryPanel(entities) {
-    if (!entities) return;
-    const rows = [];
-    for (const [category, data] of Object.entries(entities)) {
-        const label = category.replace('context', '').trim();
-        if (Array.isArray(data)) {
-            data.forEach(item => {
-                if (typeof item === 'string' && item.trim()) rows.push({ text: item.trim(), label });
-            });
-        } else if (typeof data === 'string' && data.trim()) {
-            rows.push({ text: data.trim(), label });
-        }
-    }
-
-    if (rows.length === 0) {
-        memoryList.innerHTML = '<li style="color: #BDBAB3; font-style: italic;">Listening and learning...</li>';
-        return;
-    }
-
-    memoryList.innerHTML = rows
-        .map(r => `<li><span>${r.text}</span><span class="entity-type">${r.label}</span></li>`)
-        .join("");
-}
-
-function updateArcIndicator(historyArray) {
-    if (!historyArray || historyArray.length === 0) return;
-    let arcHTML = "Trajectory: ";
-    const formattedSteps = historyArray.map(tag => `<span class="arc-step">${formatEmotionTag(tag)}</span>`);
-    arcHTML += formattedSteps.join(' <span class="arc-arrow">➔</span> ');
-    arcContainer.innerHTML = arcHTML;
 }
 
 async function sendMessage() {
@@ -121,51 +100,89 @@ async function sendMessage() {
     typingIndicator.style.display = "block";
 
     try {
-        // [IMPORTANT]: We fetch the decrypted key from Electron right before sending!
         const apiKey = await window.api.getKey();
-
         const data = await window.api.sendToPython('/chat', { 
             message: text, 
-            session_id: "default_user",
-            api_key: apiKey // Passing the BYOK to the backend
+            api_key: apiKey 
         });
 
         typingIndicator.style.display = "none";
-        appendMessage("ai", data.response, data.emotion_tag);
-        
-        if (data.emotion_tag === '[CRISIS_SIGNAL_ESCALATE]') {
-            crisisBanner.style.display = 'block';
-        } else {
-            crisisBanner.style.display = 'none';
+
+        // PHASE 4: ERROR INTERCEPTOR HANDLING
+        if (data.error) {
+            if (data.error_type === "invalid_key") {
+                appendMessage("ai", "⚠️ Your API key is invalid. Please check your credentials in settings.");
+                toggleSettings(); // Force settings open
+            } else if (data.error_type === "quota_exceeded") {
+                appendMessage("ai", "⚠️ Google AI Studio quota exceeded. Please wait or check your billing tier.");
+            } else {
+                appendMessage("ai", "⚠️ Engine Error: " + data.message);
+            }
+            return;
         }
 
+        appendMessage("ai", data.response, data.emotion_tag);
+        
+        // Crisis check
+        crisisBanner.style.display = data.emotion_tag === '[CRISIS_SIGNAL_ESCALATE]' ? 'block' : 'none';
+        
+        // Update Side Panels
         if (data.entities) updateMemoryPanel(data.entities);
         if (data.emotion_arc) updateArcIndicator(data.emotion_arc);
-        
-    } catch (error) {
+
+    } catch (e) {
         typingIndicator.style.display = "none";
-        appendMessage("ai", "I seem to have lost my connection. Could you make sure my background process is running?");
-        console.error("Bridge Error:", error);
+        appendMessage("ai", "I've lost connection to my background engine.");
     }
 }
 
-function handleEnter(event) {
-    if (event.key === "Enter") {
-        event.preventDefault(); 
-        sendMessage();
+// --- MEMORY / AGENCY LOGIC ---
+function updateMemoryPanel(entities) {
+    if (!entities) return;
+    const rows = [];
+    Object.entries(entities).forEach(([cat, data]) => {
+        if (Array.isArray(data)) data.forEach(item => rows.push({ text: item, label: cat }));
+    });
+
+    if (rows.length === 0) { 
+        memoryList.innerHTML = '<li>Listening...</li>'; 
+        return; 
+    }
+
+    memoryList.innerHTML = rows.map(r => `
+        <li class="memory-item" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="flex:1;">
+                <span>${r.text}</span>
+                <span style="display:block; font-size:10px; opacity:0.6;">${r.label.replace('context', '')}</span>
+            </div>
+            <button onclick="forgetEntity('${r.label}', '${r.text.replace(/'/g, "\\'")}')" 
+                    style="color:#ff4d4d; background:none; border:none; cursor:pointer; font-size:16px;">×</button>
+        </li>
+    `).join("");
+}
+
+async function forgetEntity(category, item) {
+    try {
+        const data = await window.api.sendToPython('/forget-entity', { category, item });
+        updateMemoryPanel(data.updated_entities);
+    } catch (e) {
+        console.error("Forget failed", e);
     }
 }
+
+function updateArcIndicator(historyArray) {
+    if (!historyArray) return;
+    arcContainer.innerHTML = "Trajectory: " + historyArray.map(t => `<span class="arc-step">${t.replace(/[\[\]]/g, '').toLowerCase()}</span>`).join(" ➔ ");
+}
+
+function handleEnter(e) { if (e.key === "Enter") sendMessage(); }
 
 async function resetMemory() {
-    try {
-        const res = await window.api.sendToPython('/reset', {});
-        chatBox.innerHTML = '<div class="message ai">Memory cleared. Let\'s start fresh whenever you are ready.</div>';
-        crisisBanner.style.display = 'none';
-        memoryList.innerHTML = '<li style="color: #BDBAB3; font-style: italic;">Listening and learning...</li>';
-        arcContainer.innerHTML = 'Trajectory: <span class="arc-step">Establishing Baseline</span>';
-        if (window.innerWidth <= 768) toggleSidebar();
-    } catch (error) {
-        console.error("Reset failed:", error);
-        alert("I couldn't reset the memory. Please check the background connection.");
+    if (confirm("Reset all memories?")) {
+        await window.api.sendToPython('/reset', {});
+        window.location.reload();
     }
 }
+
+// Start
+initializeApp();

@@ -198,6 +198,25 @@ input[type="text"]::placeholder { color: #BDBAB3; }
     text-align: center;
 }
 
+/* DARK THEME OVERRIDES */
+body.dark-mode {
+    --bg-main: #1A1A1A;       
+    --bg-sidebar: #242424;    
+    --text-main: #E0E0E0;     
+    --text-muted: #A0A0A0;
+    --bubble-ai: #2D2D2D;
+    --bubble-user: #3D4A3D;   
+    --border-soft: #333333;
+}
+
+/* Modal Styles */
+.modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; }
+.modal-content { background: var(--bg-main); padding: 30px; border-radius: 15px; width: 400px; color: var(--text-main); position: relative; }
+.setting-item { margin-bottom: 20px; display: flex; flex-direction: column; gap: 8px; }
+.password-wrapper { display: flex; gap: 5px; }
+.password-wrapper input { flex: 1; padding: 10px; background: var(--bg-sidebar); border: 1px solid var(--border-soft); color: var(--text-main); border-radius: 8px; }
+.icon-btn { background: none; border: none; cursor: pointer; font-size: 1.2rem; }
+
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 768px) {
