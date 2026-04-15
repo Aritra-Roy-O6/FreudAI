@@ -179,3 +179,5 @@ entity_store.json
 
 node_modules/
 dist/
+
+api.exe
