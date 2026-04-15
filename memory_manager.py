@@ -28,7 +28,7 @@ if not api_key:
 else:
     try:
         # Note: This specifically uses the legacy/standard google-generativeai package
-        embedding_func = embedding_functions.GoogleGenerativeAiEmbeddingFunction(api_key=api_key)
+        embedding_func = embedding_functions.GoogleGenerativeAiEmbeddingFunction(api_key=api_key,model_name="models/gemini-embedding-001")
         print("✓ Using Gemini Embeddings API")
     except Exception as e:
         print(f"⚠ Gemini API init failed: {e}")

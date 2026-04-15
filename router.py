@@ -12,7 +12,7 @@ else:
     print("CRITICAL: API Key missing for Semantic Router!")
 
 # We use Flash because it is insanely fast for classification
-MODEL_NAME = 'gemini-1.5-flash'
+MODEL_NAME = 'models/gemini-2.5-flash'
 
 # ==========================================
 # 2. EMOTION LABELS (Your exact definitions)
