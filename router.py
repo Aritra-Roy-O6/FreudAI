@@ -1,31 +1,22 @@
-from transformers import pipeline
+import os
+import google.generativeai as genai
 
 # ==========================================
-# 1. INITIALIZE ZERO-SHOT NLI CLASSIFIER
+# 1. SETUP GEMINI CLASSIFIER (Cloud-Friendly)
 # ==========================================
-# cross-encoder/nli-deberta-v3-small is ~180 MB, CPU-friendly, and far more
-# generalizable than cosine-similarity over fixed anchor sentences.
-# It treats each LABEL_HYPOTHESIS as a natural-language premise and scores
-# whether the user's message "entails" it — no hardcoded examples needed.
-try:
-    print("Loading Zero-Shot Semantic Router (cross-encoder/nli-deberta-v3-small)...")
-    _classifier = pipeline(
-        "zero-shot-classification",
-        model="cross-encoder/nli-deberta-v3-small",
-        device=-1  # CPU; change to 0 if you have a CUDA GPU
-    )
-    print("Semantic Router Online.")
-except Exception as e:
-    print(f"Error loading ZS model: {e}")
-    _classifier = None
+api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+
+if api_key:
+    genai.configure(api_key=api_key)
+else:
+    print("CRITICAL: API Key missing for Semantic Router!")
+
+# We use Flash because it is insanely fast for classification
+MODEL_NAME = 'gemini-1.5-flash'
 
 # ==========================================
-# 3. EMOTION LABELS  (plain English — edit freely)
+# 2. EMOTION LABELS (Your exact definitions)
 # ==========================================
-# These are NOT anchor sentences. They are hypothesis *descriptions* fed
-# directly to the NLI model.  The model figures out on its own whether the
-# user's text entails each one.  Add, rename, or rewrite any entry and the
-# router automatically adapts — no retraining required.
 EMOTION_LABELS: dict[str, str] = {
     "[EXPLICIT_DISTRESS]":
         "The person is expressing explicit emotional pain, grief, severe anxiety, "
@@ -63,22 +54,23 @@ EMOTION_LABELS: dict[str, str] = {
         "emotional weight.",
 }
 
-# Pre-extract the ordered label list once so we don't rebuild it every call
-_LABEL_KEYS   = list(EMOTION_LABELS.keys())
-_LABEL_TEXTS  = [EMOTION_LABELS[k] for k in _LABEL_KEYS]
+# Build the prompt template once
+_categories_text = "\n".join([f"{k}: {v}" for k, v in EMOTION_LABELS.items()])
+_PROMPT_TEMPLATE = f"""You are a highly accurate psychological routing system. 
+Classify the user's message into EXACTLY ONE of the following categories based on the descriptions provided.
+Return ONLY the exact bracketed tag (e.g., [NEUTRAL_CONVERSATIONAL]) and absolutely nothing else.
+
+Categories:
+{_categories_text}
+
+User Message: """
 
 # ==========================================
-# 4. THE ROUTING ENGINE
+# 3. THE ROUTING ENGINE
 # ==========================================
 def priority_router(user_text: str, lex_score: float, is_sarcastic: bool, is_implicit: bool, is_crisis_semantic: bool = False) -> str:
     """
-    Hybrid routing: Semantic Anchor Safety Layer → NLI Semantic Math → Fallback.
-
-    Order of evaluation (CRITICAL — do NOT rearrange):
-      1. CRISIS semantic override — bypasses NLI math if crisis is high confidence
-      2. Sarcasm override         — lexical detector confirmed deflection
-      3. NLI Classification       — the general-case semantic math
-      4. Low-confidence fallback  — implicit only if nothing else fired
+    Hybrid routing: Semantic Anchor Safety Layer → Gemini ZS Classification → Fallback.
     """
 
     # ── 1. RED LINE: Semantic Crisis Anchors ──────────────────────
@@ -90,36 +82,33 @@ def priority_router(user_text: str, lex_score: float, is_sarcastic: bool, is_imp
     if is_sarcastic:
         return "[SARCASM_DEFLECTION]"
 
-    # ── 3. Graceful degradation if the NLI model failed to load ───────
-    if _classifier is None:
+    # ── 3. Graceful degradation if API fails ───────
+    if not api_key:
         return "[IMPLICIT_DISTRESS]" if is_implicit else "[NEUTRAL_CONVERSATIONAL]"
 
-    # ── 4. Zero-Shot NLI Classification (The Math) ────────────────────
-    # The model scores P(entailment | user_text, hypothesis) for every label.
-    result = _classifier(
-        user_text,
-        candidate_labels=_LABEL_TEXTS,
-        hypothesis_template="{}",   # hypothesis IS the label description
-        multi_label=False           # pick the single most applicable label
-    )
+    # ── 4. Zero-Shot Classification via Gemini (The LLM Math) ────────────────────
+    try:
+        model = genai.GenerativeModel(MODEL_NAME)
+        # We set temperature to 0.0 so the LLM acts purely analytically, not creatively
+        response = model.generate_content(
+            _PROMPT_TEMPLATE + f'"{user_text}"',
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.0,
+                max_output_tokens=15
+            )
+        )
+        
+        best_emotion = response.text.strip()
+        
+        # Validation: Make sure the LLM actually picked a valid tag
+        if best_emotion in EMOTION_LABELS:
+            print(f"Router → {best_emotion}  (via Gemini ZS)")
+            return best_emotion
+        else:
+            print(f"Router Warning: Invalid tag returned '{best_emotion}'. Falling back.")
+            
+    except Exception as e:
+        print(f"Router ZS API Error: {e}")
 
-    # Map the winning label *text* back to its emotion tag
-    winning_text  = result["labels"][0]
-    winning_score = result["scores"][0]
-    best_emotion  = _LABEL_KEYS[_LABEL_TEXTS.index(winning_text)]
-
-    print(f"Router → {best_emotion}  (confidence: {winning_score:.3f})")
-
-    # ── 5. Low-confidence fallback ────────────────────────────────────
-    # If even the top label barely beats random (< 0.30 after softmax
-    # over 7 classes), trust the lexical implicit-distress flag as a
-    # safety net — but ONLY if the best emotion isn't already crisis or
-    # explicit distress (never downgrade a severe signal).
-    if winning_score < 0.30:
-        if best_emotion in ("[CRISIS_SIGNAL_ESCALATE]", "[EXPLICIT_DISTRESS]"):
-            return best_emotion          # never downgrade severity
-        if is_implicit:
-            return "[IMPLICIT_DISTRESS]"
-        return "[NEUTRAL_CONVERSATIONAL]"
-
-    return best_emotion
+    # ── 5. Low-confidence/Error fallback ────────────────────────────────────
+    return "[IMPLICIT_DISTRESS]" if is_implicit else "[NEUTRAL_CONVERSATIONAL]"
