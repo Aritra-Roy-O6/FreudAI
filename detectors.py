@@ -13,7 +13,7 @@ if api_key:
 else:
     print("CRITICAL: API Key missing for detectors!")
 
-EMBEDDING_MODEL = 'models/embedding-001'
+EMBEDDING_MODEL = 'gemini-embedding-001'
 
 def get_embeddings(text_input):
     """Fetches embeddings via Gemini API instead of heavy local models."""
