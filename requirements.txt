@@ -8,6 +8,7 @@ python-dotenv
 # --- Phase 1: AI & Inference ---
 langchain
 langchain-google-genai
+google-generativeai==0.8.3
 textblob
 
 # --- Phases 2 & 3: Memory & RAG (Now using Gemini Embeddings) ---
