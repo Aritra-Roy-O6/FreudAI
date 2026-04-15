@@ -179,5 +179,6 @@ entity_store.json
 
 node_modules/
 dist/
-
+engine/api.exe
+engine/chroma_db/
 api.exe
