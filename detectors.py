@@ -1,15 +1,35 @@
+import os
 import numpy as np
 from textblob import TextBlob
-from sentence_transformers import SentenceTransformer
-
-# Load the shared lightweight embedding model
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
+import google.generativeai as genai
 
 # ==========================================
-# SEMANTIC CONCEPT ANCHORS
+# 1. SETUP GEMINI EMBEDDINGS (Cloud-Friendly)
 # ==========================================
+api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 
-# 1. Deflection / Masking Anchors
+if api_key:
+    genai.configure(api_key=api_key)
+else:
+    print("CRITICAL: API Key missing for detectors!")
+
+EMBEDDING_MODEL = 'models/text-embedding-004'
+
+def get_embeddings(text_input):
+    """Fetches embeddings via Gemini API instead of heavy local models."""
+    if not api_key:
+        # Fallback to zero-vectors if the key fails so the server doesn't crash
+        return [np.zeros(768)] if isinstance(text_input, list) else np.zeros(768)
+    try:
+        result = genai.embed_content(model=EMBEDDING_MODEL, content=text_input)
+        return result['embedding']
+    except Exception as e:
+        print(f"⚠ Gemini Detector Error: {e}")
+        return [np.zeros(768)] if isinstance(text_input, list) else np.zeros(768)
+
+# ==========================================
+# 2. SEMANTIC CONCEPT ANCHORS
+# ==========================================
 DEFLECTION_ANCHORS = [
     "It's whatever, I don't really care.",
     "I'm perfectly fine, everything is great.",
@@ -17,7 +37,6 @@ DEFLECTION_ANCHORS = [
     "I'm just laughing it off, it's fine."
 ]
 
-# 2. Avoidance / Anhedonia Anchors
 AVOIDANCE_ANCHORS = [
     "I just lie in bed all day and do nothing.",
     "I stopped doing the things I used to love.",
@@ -25,7 +44,6 @@ AVOIDANCE_ANCHORS = [
     "I don't see the point in putting in effort."
 ]
 
-# 3. Imposter Syndrome / Social Comparison Anchors
 COMPARISON_ANCHORS = [
     "Everyone else seems to have their life figured out.",
     "I feel like I don't belong here compared to them.",
@@ -33,7 +51,6 @@ COMPARISON_ANCHORS = [
     "I'm falling behind and everyone else is succeeding."
 ]
 
-# 4. Crisis / Severe Distress Anchors
 CRISIS_ANCHORS = [
     "I want to kill myself.",
     "I'm going to kill my self.",
@@ -47,24 +64,30 @@ CRISIS_ANCHORS = [
     "nobody would care if I was dead."
 ]
 
-# Pre-compute embeddings for speed
-deflection_embeddings = embedder.encode(DEFLECTION_ANCHORS)
-avoidance_embeddings = embedder.encode(AVOIDANCE_ANCHORS)
-comparison_embeddings = embedder.encode(COMPARISON_ANCHORS)
-crisis_embeddings = embedder.encode(CRISIS_ANCHORS)
+# Pre-compute embeddings on startup
+print("Initializing detector anchors with Gemini...")
+deflection_embeddings = get_embeddings(DEFLECTION_ANCHORS)
+avoidance_embeddings = get_embeddings(AVOIDANCE_ANCHORS)
+comparison_embeddings = get_embeddings(COMPARISON_ANCHORS)
+crisis_embeddings = get_embeddings(CRISIS_ANCHORS)
+print("✓ Detector anchors loaded.")
 
 def cosine_similarity(vec1, vec2):
     """Calculates mathematical distance between two meaning vectors."""
-    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+    norm1, norm2 = np.linalg.norm(vec1), np.linalg.norm(vec2)
+    if norm1 == 0 or norm2 == 0: return 0.0
+    return np.dot(vec1, vec2) / (norm1 * norm2)
 
 def get_max_similarity(text_embedding, anchor_embeddings):
     """Returns the highest similarity score against a list of anchors."""
     similarities = [cosine_similarity(text_embedding, anchor) for anchor in anchor_embeddings]
-    return max(similarities)
+    return max(similarities) if similarities else 0.0
 
 # ==========================================
-# THE DETECTORS
+# 3. THE DETECTORS
 # ==========================================
+# Gemini embeddings score higher generally, so we bump the threshold to 0.65
+THRESHOLD = 0.65
 
 def lexical_scan(text: str) -> float:
     """Returns basic sentiment polarity from -1.0 (negative) to 1.0 (positive)."""
@@ -72,46 +95,30 @@ def lexical_scan(text: str) -> float:
     return analysis.sentiment.polarity
 
 def sarcasm_probe(text: str, lexical_score: float) -> tuple[bool, float]:
-    """
-    Detects sarcasm by checking if the user is semantically deflecting, 
-    but the basic text analyzer thinks they are being positive.
-    """
-    text_embedding = embedder.encode([text.lower()])[0]
-    
-    # Check if the text means "I am deflecting/masking"
+    text_embedding = get_embeddings(text.lower())
     deflection_score = get_max_similarity(text_embedding, deflection_embeddings)
     
     is_sarcastic = False
-    # If they are semantically deflecting (> 0.55) AND using neutral/positive words
-    if deflection_score > 0.55 and lexical_score >= 0.0:
+    if deflection_score > THRESHOLD and lexical_score >= 0.0:
         is_sarcastic = True
         
     return is_sarcastic, deflection_score
 
 def implicit_distress_flag(text: str) -> tuple[bool, float]:
-    """
-    Flags behavioral patterns (avoidance or imposter syndrome) using semantic math.
-    """
-    text_embedding = embedder.encode([text.lower()])[0]
+    text_embedding = get_embeddings(text.lower())
     
     avoidance_score = get_max_similarity(text_embedding, avoidance_embeddings)
     comparison_score = get_max_similarity(text_embedding, comparison_embeddings)
     
-    # If either concept hits the threshold
     max_implicit_score = max(avoidance_score, comparison_score)
-    
-    has_implicit_cue = max_implicit_score > 0.55
+    has_implicit_cue = max_implicit_score > THRESHOLD
     
     return has_implicit_cue, max_implicit_score
 
 def crisis_flag_semantic(text: str) -> tuple[bool, float]:
-    """
-    Flags extreme crisis/suicidal intent using semantic similarity to known crisis anchors.
-    This avoids brittle hardcoded exact-match keyword matching.
-    """
-    text_embedding = embedder.encode([text.lower()])[0]
+    text_embedding = get_embeddings(text.lower())
     crisis_score = get_max_similarity(text_embedding, crisis_embeddings)
     
-    # We use a strict threshold since crisis is an escalation
-    is_crisis = crisis_score > 0.55
+    # Crisis gets a slightly stricter threshold to avoid false alarms
+    is_crisis = crisis_score > (THRESHOLD + 0.05)
     return is_crisis, crisis_score
