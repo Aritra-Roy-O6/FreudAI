@@ -1,14 +1,13 @@
 import numpy as np
 import faiss
 from rank_bm25 import BM25Okapi
-from sentence_transformers import SentenceTransformer
 
 # ==========================================
 # STEP 1: INITIALIZE MODELS & ENGINE
 # ==========================================
 
-# Load our lightweight embedding model for FAISS
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
+# Embeddings are now handled by ChromaDB with Gemini API
+# No need to load local SentenceTransformer anymore!
 
 class HybridRAGEngine:
     def __init__(self):

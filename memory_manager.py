@@ -1,36 +1,46 @@
 import os
 import json
 import chromadb
-from chromadb.utils import embedding_functions
+import chromadb.utils.embedding_functions as embedding_functions
 import uuid
 
 # ==========================================
 # STEP 1: STORAGE ENVIRONMENT INITIALIZATION
 # ==========================================
 
-# Define where our memory will live on your local machine
-ENTITY_FILE = "entity_store.json"
-CHROMA_DB_PATH = "./chroma_db"
+# Set the path to the root folder where memory_manager.py lives
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+ENTITY_FILE = os.path.join(APP_DIR, "entity_store.json")
+MEMORY_DIR = os.path.join(APP_DIR, 'chroma_db')
+
+os.makedirs(MEMORY_DIR, exist_ok=True)
 
 print("Initializing Storage Environment...")
 
-# 1A. Initialize ChromaDB (Long-Term Vector Memory)
+# 1A. Setup the Gemini Embedding Function
+# This grabs the API key from Render Environment Variables
+api_key = os.environ.get("GEMINI_API_KEY")
+google_ef = embedding_functions.GoogleGenerativeAiEmbeddingFunction(api_key=api_key)
+
+# 1B. Initialize ChromaDB (Long-Term Vector Memory)
 # We use PersistentClient so the AI's memory survives even if you restart your computer or server.
-chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
-
-# 1B. Setup the Embedding Function
-# This automatically converts text into math (vectors) so the AI can search by "meaning" later.
-embedding_func = embedding_functions.DefaultEmbeddingFunction()
-
-# 1C. Create the Database Collection
-# Think of a 'collection' like a specific folder or table dedicated to storing the user's conversational history.
-memory_collection = chroma_client.get_or_create_collection(
-    name="user_long_term_memory",
-    embedding_function=embedding_func
-)
-
-print(f"Success: ChromaDB running at {CHROMA_DB_PATH}")
-print(f"Success: Entity tracking will be saved to {ENTITY_FILE}")
+try:
+    chroma_client = chromadb.PersistentClient(path=MEMORY_DIR)
+    
+    # 1C. Create the Database Collection
+    # By passing the embedding_function here, Chroma automatically uses Gemini
+    # whenever you run .add() or .query()!
+    memory_collection = chroma_client.get_or_create_collection(
+        name="user_long_term_memory",
+        embedding_function=google_ef
+    )
+    
+    print(f"Success: ChromaDB running at {MEMORY_DIR}")
+    print(f"Success: Using Gemini Embeddings API")
+    print(f"Success: Entity tracking will be saved to {ENTITY_FILE}")
+except Exception as e:
+    print(f"[Memory Error] ChromaDB Init Failed: {e}")
+    memory_collection = None
 
 # ==========================================
 # STEP 2: ENTITY LEDGER LOGIC (JSON)

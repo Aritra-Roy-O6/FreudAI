@@ -2,19 +2,14 @@
 fastapi
 uvicorn
 pydantic
-streamlit
 requests
 python-dotenv
 
 # --- Phase 1: AI & Inference ---
 langchain
 langchain-google-genai
-sentence-transformers
-transformers
 textblob
 
-# --- Phases 2 & 3: Memory & RAG (Future-proofing) ---
+# --- Phases 2 & 3: Memory & RAG (Now using Gemini Embeddings) ---
 chromadb
-faiss-cpu
 rank-bm25
-spacy
